@@ -1,0 +1,66 @@
+{
+  "name": "gorgias-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server exposing the full Gorgias helpdesk API to AI assistants",
+  "type": "module",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    }
+  },
+  "bin": {
+    "gorgias-mcp-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "gorgias",
+    "helpdesk",
+    "api",
+    "customer-support",
+    "model-context-protocol",
+    "claude",
+    "ai"
+  ],
+  "author": "benpalmer1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/benpalmer1/Gorgias-MCP-Server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/benpalmer1/Gorgias-MCP-Server/issues"
+  },
+  "homepage": "https://github.com/benpalmer1/Gorgias-MCP-Server#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.19.15",
+    "eslint": "^10.1.0",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.57.2",
+    "vitest": "^4.1.1"
+  }
+}
