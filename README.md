@@ -307,6 +307,7 @@ To customise for other industries (e.g. SaaS, healthcare, finance), edit the `TO
 ```bash
 npm run build        # Compile TypeScript
 npm run dev          # Compile in watch mode
+npm run lint         # Run ESLint
 npm run test         # Run tests once
 npm run test:watch   # Run tests in watch mode
 ```
