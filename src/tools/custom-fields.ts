@@ -8,16 +8,14 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
   // --- List Custom Fields ---
   server.registerTool("gorgias_list_custom_fields", {
     title: "List Custom Fields",
-    description: "GET /api/custom-fields — Returns a paginated, ordered list of custom fields. Requires object_type to specify which entity's fields to list. Supports both offset-based and cursor-based pagination.",
+    description: "GET /api/custom-fields — Returns a cursor-paginated list of custom fields. Requires object_type to specify which entity's fields to list. Supports filtering by name search and archived status.",
     inputSchema: {
       object_type: z.enum(["Ticket", "Customer"]).describe("Type of entity to list custom fields for: 'Ticket' or 'Customer'"),
-      limit: z.number().optional().describe("Maximum number of custom fields to return per page"),
-      offset: z.number().optional().describe("Number of records to skip before starting to return results (offset-based pagination)"),
-      cursor: z.string().optional().describe("Cursor token for cursor-based pagination. Use next_cursor or prev_cursor from a previous response"),
-      order_by: z.enum([
-        "created_datetime:asc", "created_datetime:desc",
-        "updated_datetime:asc", "updated_datetime:desc",
-      ]).optional().describe("Sort order for results"),
+      cursor: z.string().optional().describe("Cursor token for pagination. Use next_cursor or prev_cursor from a previous response."),
+      limit: z.number().int().min(1).max(100).optional().describe("Maximum number of custom fields to return per page (1-100, default 30)"),
+      order_by: z.enum(["priority:asc", "priority:desc"]).optional().describe("Sort order. Default: 'priority:desc'."),
+      search: z.string().optional().describe("Filter custom fields by name (substring match)."),
+      archived: z.boolean().optional().describe("If true, return only archived custom fields. If false or omitted, return active fields."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -56,7 +54,6 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
       managed_type: z.enum([
         "contact_reason", "product", "resolution", "ai_intent", "ai_outcome",
         "ai_sales", "ai_discount", "ai_journey", "managed_sentiment", "call_status",
-        "customer_type",
       ]).nullable().optional().describe("Managed field type classification. Leave null for standard custom fields"),
       deactivated_datetime: z.string().nullable().optional().describe("ISO 8601 datetime to deactivate the field at creation. Typically null"),
     },
@@ -85,7 +82,6 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
       managed_type: z.enum([
         "contact_reason", "product", "resolution", "ai_intent", "ai_outcome",
         "ai_sales", "ai_discount", "ai_journey", "managed_sentiment", "call_status",
-        "customer_type",
       ]).nullable().optional().describe("Managed field type classification. Null for standard custom fields"),
       deactivated_datetime: z.string().nullable().optional().describe("ISO 8601 datetime to deactivate the field. Set to null to reactivate"),
     },
@@ -115,7 +111,6 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
         managed_type: z.enum([
           "contact_reason", "product", "resolution", "ai_intent", "ai_outcome",
           "ai_sales", "ai_discount", "ai_journey", "managed_sentiment", "call_status",
-          "customer_type",
         ]).nullable().optional().describe("Managed field type classification"),
         deactivated_datetime: z.string().nullable().optional().describe("ISO 8601 datetime to deactivate/reactivate the field"),
       })).min(1).describe("Array of custom field update objects. Each must include an id"),

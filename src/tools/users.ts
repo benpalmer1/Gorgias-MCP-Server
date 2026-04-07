@@ -8,10 +8,16 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
   // --- List Users ---
   server.registerTool("gorgias_list_users", {
     title: "List Users",
-    description: "GET /api/users — List all users, ordered alphabetically by name, with cursor-based pagination.",
+    description: "GET /api/users — List users with cursor-based pagination. Supports filtering by email, external ID, role, search term, and ordering.",
     inputSchema: {
       cursor: z.string().optional().describe("Pagination cursor from a previous response (meta.next_cursor or meta.prev_cursor)"),
-      limit: z.number().optional().describe("Maximum number of users to return per page"),
+      limit: z.number().int().min(1).max(100).optional().describe("Maximum number of users to return per page (default: 30, max: 100)"),
+      email: z.string().email().optional().describe("Filter by exact email address."),
+      external_id: z.string().optional().describe("Filter by external_id (foreign system identifier)."),
+      search: z.string().optional().describe("Free-text search against user name and email."),
+      available_first: z.boolean().optional().describe("If true, prioritise currently available users in the result order."),
+      roles: z.array(z.string()).optional().describe("Filter by role names. Common values: 'admin', 'agent'."),
+      order_by: z.string().optional().describe("Sort order, e.g. 'name:asc', 'email:desc', 'created_datetime:desc'."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {

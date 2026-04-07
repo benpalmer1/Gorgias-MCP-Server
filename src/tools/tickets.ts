@@ -37,10 +37,11 @@ export function registerTicketTools(server: McpServer, client: GorgiasClient) {
     description: "GET /api/tickets/{id} — Retrieve a single ticket's raw API response. For a clean, LLM-optimised view with projected messages sorted chronologically, use gorgias_smart_get_ticket instead. Returns the full Ticket object including customer, messages, tags, custom fields, assignees, satisfaction survey, and metadata.",
     inputSchema: {
       id: z.number().describe("The unique ID of the ticket to retrieve"),
+      relationships: z.array(z.enum(["custom_fields"])).optional().describe("Names of related objects to include in the response. Currently the Gorgias API documents 'custom_fields'."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
-  }, safeHandler(async ({ id }) => {
-    const result = await client.get(`/api/tickets/${id}`);
+  }, safeHandler(async ({ id, ...query }) => {
+    const result = await client.get(`/api/tickets/${id}`, query);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 

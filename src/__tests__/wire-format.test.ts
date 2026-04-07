@@ -28,6 +28,8 @@ import { registerTicketTools } from "../tools/tickets.js";
 import { registerSmartStatsTools } from "../tools/smart-stats.js";
 import { registerUserTools } from "../tools/users.js";
 import { registerVoiceCallTools } from "../tools/voice-calls.js";
+import { registerEventTools } from "../tools/events.js";
+import { registerCustomFieldTools } from "../tools/custom-fields.js";
 import type { GorgiasClient } from "../client.js";
 
 // ---------------------------------------------------------------------------
@@ -496,6 +498,216 @@ describe("smart_stats null-measure preservation and column union", () => {
     const columns = json.columns as Record<string, string>;
     expect(columns).toHaveProperty("a");
     expect(columns).toHaveProperty("b");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H3 — gorgias_get_ticket exposes the relationships query parameter
+// ---------------------------------------------------------------------------
+
+describe("gorgias_get_ticket relationships", () => {
+  it("exposes a relationships query parameter and forwards it as a query arg", async () => {
+    const { server, tools } = makeStubServer();
+    const { client, calls } = makeStubClient([{ id: 42 }]);
+    registerTicketTools(server as never, client);
+
+    const tool = tools.get("gorgias_get_ticket")!;
+    const shape = tool.config.inputSchema!;
+    expect(shape.relationships).toBeDefined();
+
+    await tool.handler({ id: 42, relationships: ["custom_fields"] });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("GET");
+    expect(calls[0].path).toBe("/api/tickets/42");
+    expect(calls[0].query).toEqual({ relationships: ["custom_fields"] });
+  });
+
+  it("does not include relationships in the query when omitted", async () => {
+    const { server, tools } = makeStubServer();
+    const { client, calls } = makeStubClient([{ id: 42 }]);
+    registerTicketTools(server as never, client);
+
+    await tools.get("gorgias_get_ticket")!.handler({ id: 42 });
+    expect(calls[0].query).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H4 — gorgias_list_customers exposes view_id, channel_type, channel_address
+// ---------------------------------------------------------------------------
+
+describe("gorgias_list_customers added params", () => {
+  it("exposes view_id, channel_type, channel_address per Gorgias docs", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerCustomerTools(server as never, client);
+
+    const shape = tools.get("gorgias_list_customers")!.config.inputSchema!;
+    expect(shape.view_id).toBeDefined();
+    expect(shape.channel_type).toBeDefined();
+    expect(shape.channel_address).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H5 — gorgias_list_users exposes the missing 6 documented filters
+// ---------------------------------------------------------------------------
+
+describe("gorgias_list_users added params", () => {
+  it("exposes email, external_id, search, available_first, roles, order_by", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerUserTools(server as never, client);
+
+    const shape = tools.get("gorgias_list_users")!.config.inputSchema!;
+    for (const key of [
+      "email",
+      "external_id",
+      "search",
+      "available_first",
+      "roles",
+      "order_by",
+    ]) {
+      expect(shape[key]).toBeDefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H6 — gorgias_list_custom_fields fixes phantom offset and wrong order_by enum
+// ---------------------------------------------------------------------------
+
+describe("gorgias_list_custom_fields schema correction", () => {
+  let tools: Map<string, RegisteredTool>;
+  beforeEach(() => {
+    const { server, tools: t } = makeStubServer();
+    const { client } = makeStubClient();
+    registerCustomFieldTools(server as never, client);
+    tools = t;
+  });
+
+  it("does NOT expose offset (cursor-only endpoint)", () => {
+    const shape = tools.get("gorgias_list_custom_fields")!.config.inputSchema!;
+    expect(shape.offset).toBeUndefined();
+  });
+
+  it("order_by enum is priority:asc/desc, not created_datetime/updated_datetime", () => {
+    const shape = tools.get("gorgias_list_custom_fields")!.config.inputSchema!;
+    const orderBy = shape.order_by as z.ZodTypeAny;
+    expect(orderBy.safeParse("priority:asc").success).toBe(true);
+    expect(orderBy.safeParse("priority:desc").success).toBe(true);
+    expect(orderBy.safeParse("created_datetime:asc").success).toBe(false);
+    expect(orderBy.safeParse("updated_datetime:desc").success).toBe(false);
+  });
+
+  it("exposes search and archived filters", () => {
+    const shape = tools.get("gorgias_list_custom_fields")!.config.inputSchema!;
+    expect(shape.search).toBeDefined();
+    expect(shape.archived).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H7 — gorgias_list_events array types and corrected enum
+// ---------------------------------------------------------------------------
+
+describe("gorgias_list_events array params and corrected enum", () => {
+  let tools: Map<string, RegisteredTool>;
+  beforeEach(() => {
+    const { server, tools: t } = makeStubServer();
+    const { client } = makeStubClient();
+    registerEventTools(server as never, client);
+    tools = t;
+  });
+
+  it("user_ids accepts an array of integers (not a single integer)", () => {
+    const shape = tools.get("gorgias_list_events")!.config.inputSchema!;
+    const userIds = shape.user_ids as z.ZodTypeAny;
+    expect(userIds.safeParse([1, 2, 3]).success).toBe(true);
+    expect(userIds.safeParse(1).success).toBe(false);
+  });
+
+  it("types accepts an array of strings (not a single string)", () => {
+    const shape = tools.get("gorgias_list_events")!.config.inputSchema!;
+    const types = shape.types as z.ZodTypeAny;
+    expect(types.safeParse(["ticket-created", "ticket-updated"]).success).toBe(true);
+    expect(types.safeParse("ticket-created").success).toBe(false);
+  });
+
+  it("object_type enum uses Message and TicketRule (corrected from TicketMessage and Rule) and includes SatisfactionSurvey", () => {
+    const shape = tools.get("gorgias_list_events")!.config.inputSchema!;
+    const objectType = shape.object_type as z.ZodTypeAny;
+    expect(objectType.safeParse("Message").success).toBe(true);
+    expect(objectType.safeParse("TicketRule").success).toBe(true);
+    expect(objectType.safeParse("SatisfactionSurvey").success).toBe(true);
+    // Old wrong values should now be rejected
+    expect(objectType.safeParse("TicketMessage").success).toBe(false);
+    expect(objectType.safeParse("Rule").success).toBe(false);
+  });
+
+  it("exposes the created_datetime comparator filter", () => {
+    const shape = tools.get("gorgias_list_events")!.config.inputSchema!;
+    const cd = shape.created_datetime as z.ZodTypeAny;
+    expect(cd).toBeDefined();
+    expect(cd.safeParse({ gte: "2026-01-01T00:00:00Z" }).success).toBe(true);
+    expect(cd.safeParse({ lt: "2026-02-01T00:00:00Z" }).success).toBe(true);
+    expect(cd.safeParse({ gt: "2026-01-01T00:00:00Z", lte: "2026-12-31T23:59:59Z" }).success).toBe(true);
+    // Empty object is valid (means no filter)
+    expect(cd.safeParse({}).success).toBe(true);
+    // Wrong value type
+    expect(cd.safeParse({ gte: 12345 }).success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M28 — managed_type enum no longer includes the phantom 'customer_type' value
+// ---------------------------------------------------------------------------
+
+describe("custom_fields managed_type enum", () => {
+  it("does NOT accept 'customer_type' (phantom value not in Gorgias docs)", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerCustomFieldTools(server as never, client);
+
+    const tool = tools.get("gorgias_create_custom_field")!;
+    const schema = z.object(tool.config.inputSchema!);
+    const result = schema.safeParse({
+      object_type: "Customer",
+      label: "test",
+      definition: { data_type: "text", input_settings: { input_type: "input" } },
+      managed_type: "customer_type",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("still accepts the documented managed_type values", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerCustomFieldTools(server as never, client);
+
+    const tool = tools.get("gorgias_create_custom_field")!;
+    const schema = z.object(tool.config.inputSchema!);
+    for (const v of [
+      "contact_reason",
+      "product",
+      "resolution",
+      "ai_intent",
+      "ai_outcome",
+      "ai_sales",
+      "ai_discount",
+      "ai_journey",
+      "managed_sentiment",
+      "call_status",
+    ]) {
+      const result = schema.safeParse({
+        object_type: "Ticket",
+        label: "test",
+        definition: { data_type: "text", input_settings: { input_type: "input" } },
+        managed_type: v,
+      });
+      expect(result.success).toBe(true);
+    }
   });
 });
 
