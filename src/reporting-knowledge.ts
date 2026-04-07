@@ -122,7 +122,7 @@ export const DIMENSION_ALIASES: Record<string, string | null> = {
   "tag": "tagId",
   "store": "storeId",
   "integration": "integrationId",
-  "policy": "policyId",
+  "policy": null, // policyId is not a valid dimension for any current scope
   "phone": "phoneNumberId",
   "queue": "queueId",
   "category": "categoryName",

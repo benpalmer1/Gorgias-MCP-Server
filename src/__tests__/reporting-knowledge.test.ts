@@ -52,6 +52,20 @@ describe("DIMENSION_ALIASES", () => {
     expect(DIMENSION_ALIASES["team"]).toBe("teamId");
     expect(DIMENSION_ALIASES["tag"]).toBe("tagId");
   });
+
+  it("maps 'policy' to null (no scope supports policyId)", () => {
+    expect(DIMENSION_ALIASES["policy"]).toBeNull();
+  });
+
+  it("every non-null alias targets a dimension in at least one scope", () => {
+    const allValidDims = new Set(
+      Object.values(SCOPE_VALID_DIMENSIONS).flat(),
+    );
+    for (const [_alias, target] of Object.entries(DIMENSION_ALIASES)) {
+      if (target === null) continue;
+      expect(allValidDims.has(target)).toBe(true);
+    }
+  });
 });
 
 describe("BROKEN_SCOPES", () => {
