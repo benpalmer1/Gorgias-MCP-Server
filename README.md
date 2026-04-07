@@ -180,7 +180,16 @@ Alternatively, create `.mcp.json` manually in your project root:
 }
 ```
 
-> **Note:** When using `claude mcp add` with `-e KEY=VALUE` flags, place them **before** the `--` separator (e.g., `claude mcp add gorgias -e GORGIAS_DOMAIN=mycompany -- npx gorgias-mcp-server`). Flags after `--` are passed as command arguments, not environment variables. For multiple env vars, `claude mcp add-json` (shown above) is the easiest approach.
+> **Note:** You can also use `claude mcp add` directly. All flags (`--transport`, `--env`, `--scope`) must come **before** the server name, and `--` separates the name from the command:
+> ```bash
+> claude mcp add --transport stdio --scope project \
+>   --env GORGIAS_DOMAIN=mycompany \
+>   --env GORGIAS_EMAIL=admin@mycompany.com \
+>   --env GORGIAS_API_KEY=your-api-key-here \
+>   --env GORGIAS_ACCESS_LEVEL=readonly \
+>   gorgias -- npx gorgias-mcp-server
+> ```
+> For most users, `claude mcp add-json` (shown above) is simpler.
 
 > **Note:** If you add the MCP server mid-session, you may need to restart Claude Code (`/quit` and relaunch) for the tools to appear. Verify connection with `claude mcp list`.
 
