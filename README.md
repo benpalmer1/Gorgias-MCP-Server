@@ -59,7 +59,7 @@ These handle the common 80% of use cases. The 110 raw tools provide direct API a
 
 ## Installation
 
-Requires Node.js 18 or later.
+Requires Node.js 20 or later. (Node 18 reached end-of-life in April 2025.)
 
 ```bash
 npm install -g gorgias-mcp-server
@@ -331,10 +331,47 @@ To customise for other industries (e.g. SaaS, healthcare, finance), edit the `TO
 
 ## Security
 
-- The error sanitiser strips credentials, tokens, and internal URLs from all error messages before they reach the LLM.
-- Access levels (`readonly`, `agent`, `admin`) control which tools are exposed. Start with `readonly` unless write access is needed.
+- The error sanitiser strips credentials, tokens, vendor API key prefixes (Stripe `sk_live_`, Slack `xoxb-`, GitHub `ghp_`, AWS `AKIA…`, etc.), email addresses, internal/loopback IPs, and sensitive filesystem paths from all error messages before they reach the LLM.
+- The HTTP client enforces a 30-second per-request timeout and caps the `Retry-After` header at 60 seconds, so a stalled or misconfigured upstream cannot freeze a tool call.
+- Access levels (`readonly`, `agent`, `admin`) control which tools are exposed. Start with `readonly` unless write access is needed. **The default is `admin` if `GORGIAS_ACCESS_LEVEL` is not set** — explicitly set it for production.
 - In `agent` mode, the AI **can** send customer-facing messages and modify tickets. Make sure this is intentional before enabling it.
 - Customer data (ticket messages, names, email addresses) is passed to the LLM as part of normal MCP operation. If you handle sensitive data, factor this into your compliance review.
+- Reference data (users, tags, views, custom fields, teams) is cached in-process for 10 minutes to reduce API calls. The cache is per-`GorgiasClient` instance and lives in plain process memory. Restart the server to flush.
+- Never commit your `GORGIAS_API_KEY` to source control. Use environment variables or a secret manager.
+
+---
+
+## Troubleshooting
+
+### `Missing required environment variables`
+Set `GORGIAS_DOMAIN`, `GORGIAS_EMAIL`, and `GORGIAS_API_KEY`. The `domain` accepts `mycompany`, `mycompany.gorgias.com`, or `https://mycompany.gorgias.com`.
+
+### `401 Unauthorized` / `Authentication failed`
+- Verify the email matches the user account that created the API key (Settings > REST API).
+- Verify the API key has not been rotated or revoked.
+- Confirm `GORGIAS_DOMAIN` matches the tenant where the key was issued.
+
+### `403 Forbidden`
+- The Gorgias REST API is gated to specific plan tiers. Check your account's plan in the Gorgias admin UI.
+- The user behind the API key may not have permission to access the resource (e.g. some endpoints require admin role).
+
+### `429 Rate limited by Gorgias API`
+The HTTP client automatically retries 429 responses up to 3 times with exponential backoff (1s/2s/4s, plus jitter), honouring the upstream `Retry-After` header capped at 60 seconds. If you still see persistent 429 errors after the built-in retries, you have exceeded the leaky-bucket budget for the tenant — slow down or wait a few minutes.
+
+### Tools not appearing in the MCP client
+- Fully quit and re-launch Claude Desktop or your IDE — most clients only re-read the MCP config on restart.
+- Verify the server actually started by checking the client's MCP logs. The server logs `Gorgias MCP server started — N tools registered (access level: …)` to stderr.
+- Confirm `GORGIAS_ACCESS_LEVEL` is not unintentionally set to `readonly` (which hides every write tool).
+- Check `claude mcp list` (Claude Code CLI) to confirm registration.
+
+### Domain format errors
+Accepted formats: `mycompany`, `mycompany.gorgias.com`, `https://mycompany.gorgias.com`. Plain `http://` is rejected. Whitespace, empty strings, and internal spaces will fail at request time. Only `*.gorgias.com` hosts are intended; pointing the server at an unrelated host is your responsibility.
+
+### `Maximum allowed period size is 366 days` (smart_stats / reporting)
+The Gorgias reporting API enforces a 366-day maximum range per request. Split longer queries into multiple windows.
+
+### Empty or surprisingly small smart_stats results
+The tool caps each query at 100 rows. Multi-agent + daily-granularity queries hit this fast (e.g. 30 days × 4 agents = 120 rows). Coarsen the granularity (`week` or `month`), shorten the date range, or use `gorgias_retrieve_reporting_statistic` for paginated raw access.
 
 ---
 
@@ -351,7 +388,7 @@ To customise for other industries (e.g. SaaS, healthcare, finance), edit the `TO
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0
 
 ### Scripts
 

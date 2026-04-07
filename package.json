@@ -7,8 +7,8 @@
   "types": "dist/server.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/server.js",
-      "types": "./dist/server.d.ts"
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
     }
   },
   "bin": {
@@ -49,7 +49,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.28.0",
