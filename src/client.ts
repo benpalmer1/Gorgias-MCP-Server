@@ -58,6 +58,30 @@ export class GorgiasClient {
       "Basic " + Buffer.from(`${email}:${apiKey}`).toString("base64");
   }
 
+  /**
+   * Default per-request timeout in milliseconds. Prevents `fetch` from
+   * hanging indefinitely on a stalled connection or unresponsive server.
+   */
+  private static readonly REQUEST_TIMEOUT_MS = 30_000;
+
+  /**
+   * Maximum seconds we will sleep on a single 429 retry, regardless of
+   * what the server's `Retry-After` header says. Caps the worst case at
+   * one minute so a misconfigured upstream cannot stall the MCP tool
+   * for hours.
+   */
+  private static readonly MAX_RETRY_AFTER_SECONDS = 60;
+
+  /**
+   * JSON content-type matcher that accepts vendor variants such as
+   * `application/vnd.api+json`, `application/problem+json`,
+   * `application/hal+json`, and any future `+json` suffix family.
+   * `application/json` itself and any `;charset=...` suffix are also
+   * accepted.
+   */
+  private static readonly JSON_CONTENT_TYPE_RE =
+    /\bapplication\/(?:[\w.+-]+\+)?json\b/i;
+
   async request(
     method: string,
     path: string,
@@ -73,8 +97,21 @@ export class GorgiasClient {
         if (value === undefined || value === null) continue;
         if (Array.isArray(value)) {
           for (const v of value) {
+            // Skip null/undefined inside arrays so they aren't serialised
+            // as the literal strings "null"/"undefined".
+            if (v === undefined || v === null) continue;
+            if (typeof v === "object") {
+              throw new Error(
+                `Query parameter "${key}" array element must be a scalar (got ${typeof v})`,
+              );
+            }
             url.searchParams.append(key, String(v));
           }
+        } else if (typeof value === "object") {
+          // Reject objects rather than letting them coerce to "[object Object]".
+          throw new Error(
+            `Query parameter "${key}" must be a scalar or array of scalars (got object)`,
+          );
         } else {
           url.searchParams.set(key, String(value));
         }
@@ -94,22 +131,45 @@ export class GorgiasClient {
     let response!: Response;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      response = await fetch(url.toString(), {
-        method,
-        headers,
-        body: options?.body !== undefined ? JSON.stringify(options.body) : undefined,
-      });
+      // Set up an AbortController so the request times out cleanly
+      // rather than hanging if the upstream stalls.
+      const controller = new AbortController();
+      const timer = setTimeout(
+        () => controller.abort(),
+        GorgiasClient.REQUEST_TIMEOUT_MS,
+      );
+
+      try {
+        response = await fetch(url.toString(), {
+          method,
+          headers,
+          body: options?.body !== undefined ? JSON.stringify(options.body) : undefined,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
 
       if (response.status !== 429) {
         break;
       }
 
-      // On last attempt, don't sleep — fall through to throw below
+      // On last attempt, don't sleep — fall through to throw below.
       if (attempt < maxRetries - 1) {
         const retryAfterHeader = response.headers.get("Retry-After");
-        const waitSeconds = retryAfterHeader ? Number(retryAfterHeader) : 1;
-        const waitMs = (isNaN(waitSeconds) || waitSeconds <= 0 ? 1 : waitSeconds) * 1000;
-        await new Promise(resolve => setTimeout(resolve, waitMs));
+        const headerSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+        // Exponential backoff base: 1s, 2s, 4s. The header value (if
+        // present and sane) overrides this, but is capped to
+        // MAX_RETRY_AFTER_SECONDS so a malicious or misconfigured server
+        // cannot stall the request indefinitely.
+        const expBackoffSeconds = Math.min(2 ** attempt, GorgiasClient.MAX_RETRY_AFTER_SECONDS);
+        const baseSeconds =
+          !isNaN(headerSeconds) && headerSeconds > 0
+            ? Math.min(headerSeconds, GorgiasClient.MAX_RETRY_AFTER_SECONDS)
+            : expBackoffSeconds;
+        // Add up to 250ms of jitter to spread out retry storms.
+        const jitterMs = Math.floor(Math.random() * 250);
+        await new Promise(resolve => setTimeout(resolve, baseSeconds * 1000 + jitterMs));
       }
     }
 
@@ -138,13 +198,38 @@ export class GorgiasClient {
       );
     }
 
-    if (response.status === 204) {
-      return { success: true, message: "Operation completed successfully (204 No Content)" };
+    // 204 No Content and 202 Accepted (often empty body, e.g.
+    // PUT /api/customers/{id}/data). Also covers any other 2xx with
+    // Content-Length: 0.
+    const contentLength = response.headers.get("content-length");
+    if (response.status === 204 || response.status === 202 || contentLength === "0") {
+      return {
+        success: true,
+        status: response.status,
+        message: `Operation accepted (${response.status} ${response.statusText})`,
+      };
     }
 
     const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      return response.json();
+    if (GorgiasClient.JSON_CONTENT_TYPE_RE.test(contentType)) {
+      // Defensive: if the body really is empty despite the Content-Type
+      // header, return a structured success object instead of throwing
+      // a confusing JSON parse error.
+      const text = await response.text();
+      if (text.length === 0) {
+        return {
+          success: true,
+          status: response.status,
+          message: `Empty body (${response.status} ${response.statusText})`,
+        };
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        // The server claimed JSON but sent malformed body. Return as raw
+        // text rather than crashing.
+        return { content: text };
+      }
     }
 
     // For non-JSON responses (e.g., file downloads)
