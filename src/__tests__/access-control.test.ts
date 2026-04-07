@@ -1,5 +1,11 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { isToolAllowed, AGENT_WRITE_TOOLS, getAccessLevel } from "../access-control.js";
+import {
+  isToolAllowed,
+  AGENT_WRITE_TOOLS,
+  getAccessLevel,
+  getAccessFilterStats,
+} from "../access-control.js";
+import { createGorgiasServer } from "../server.js";
 
 describe("isToolAllowed", () => {
   // --- admin ---
@@ -122,5 +128,59 @@ describe("getAccessLevel", () => {
   it("throws for invalid values", () => {
     process.env.GORGIAS_ACCESS_LEVEL = "superadmin";
     expect(() => getAccessLevel()).toThrow("Invalid GORGIAS_ACCESS_LEVEL");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H17 — getAccessFilterStats survives the rawServer return
+// ---------------------------------------------------------------------------
+
+describe("getAccessFilterStats", () => {
+  const TEST_CONFIG = {
+    domain: "testtenant",
+    email: "test@example.com",
+    apiKey: "test-key",
+  };
+
+  it("admin level: stats are populated and registeredCount > 0", () => {
+    const server = createGorgiasServer({ ...TEST_CONFIG, accessLevel: "admin" });
+    const stats = getAccessFilterStats(server);
+    expect(stats).toBeDefined();
+    expect(stats!.registeredCount).toBeGreaterThan(100);
+    expect(stats!.skippedCount).toBe(0);
+  });
+
+  it("readonly level: stats include both registered and skipped counts", () => {
+    const server = createGorgiasServer({ ...TEST_CONFIG, accessLevel: "readonly" });
+    const stats = getAccessFilterStats(server);
+    expect(stats).toBeDefined();
+    expect(stats!.registeredCount).toBeGreaterThan(0);
+    expect(stats!.skippedCount).toBeGreaterThan(0);
+    // Sum should equal admin's total registration count
+    const admin = createGorgiasServer({ ...TEST_CONFIG, accessLevel: "admin" });
+    const adminStats = getAccessFilterStats(admin);
+    expect(stats!.registeredCount + stats!.skippedCount).toBe(adminStats!.registeredCount);
+  });
+
+  it("agent level: registers more than readonly, fewer than admin", () => {
+    const readonly = createGorgiasServer({ ...TEST_CONFIG, accessLevel: "readonly" });
+    const agent = createGorgiasServer({ ...TEST_CONFIG, accessLevel: "agent" });
+    const admin = createGorgiasServer({ ...TEST_CONFIG, accessLevel: "admin" });
+    const r = getAccessFilterStats(readonly)!;
+    const a = getAccessFilterStats(agent)!;
+    const ad = getAccessFilterStats(admin)!;
+    expect(a.registeredCount).toBeGreaterThan(r.registeredCount);
+    expect(a.registeredCount).toBeLessThan(ad.registeredCount);
+    // Agent registered count should equal readonly + AGENT_WRITE_TOOLS size
+    expect(a.registeredCount).toBe(r.registeredCount + AGENT_WRITE_TOOLS.size);
+  });
+
+  it("readonly skip count includes every AGENT_WRITE_TOOLS entry", () => {
+    const readonly = createGorgiasServer({ ...TEST_CONFIG, accessLevel: "readonly" });
+    const stats = getAccessFilterStats(readonly)!;
+    // skippedCount must be at least the size of AGENT_WRITE_TOOLS (which
+    // are all writes that readonly excludes), plus all the other
+    // admin-only writes/deletes.
+    expect(stats.skippedCount).toBeGreaterThanOrEqual(AGENT_WRITE_TOOLS.size);
   });
 });
