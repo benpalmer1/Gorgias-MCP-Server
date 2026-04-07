@@ -9,6 +9,10 @@ export default tseslint.config(
       parserOptions: {
         projectService: {
           allowDefaultProject: ["src/__tests__/*.ts"],
+          // Test files are checked individually outside the main tsconfig
+          // (which excludes __tests__). Bump from the default 8 since the
+          // test suite has grown.
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 50,
         },
         tsconfigRootDir: import.meta.dirname,
       },

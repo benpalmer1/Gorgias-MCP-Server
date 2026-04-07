@@ -97,7 +97,9 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
     },
     annotations: { readOnlyHint: false, openWorldHint: true },
   }, safeHandler(async (args) => {
-    const result = await client.post("/api/rules/priorities", args.priorities);
+    // The Gorgias API expects the body to be wrapped in a { priorities: [...] }
+    // object, NOT the bare array. Sending the array alone produces a 400.
+    const result = await client.post("/api/rules/priorities", { priorities: args.priorities });
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 }

@@ -191,7 +191,7 @@ For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve
       // Truncation warning
       let hint = `Returned ${rows.length} row(s) for scope '${scope}' from ${args.start_date} to ${args.end_date}.`;
       if (rows.length >= 100) {
-        hint += " WARNING: Results may be truncated at 100 rows. Narrow the date range or add dimensions for more precise data.";
+        hint += " WARNING: Results were capped at 100 rows by this tool and may be truncated. To see more data, do ONE of: (1) shorten the date range; (2) coarsen the granularity (e.g. 'week' or 'month' instead of 'day'); (3) REMOVE dimensions to reduce row cardinality (adding dimensions multiplies rows and makes truncation worse); (4) issue narrower queries and merge client-side. For raw paginated access beyond 100 rows, use gorgias_retrieve_reporting_statistic with limit + cursor.";
       }
       hint += " Present data in a table format.";
       if (hasAgentDimension) {

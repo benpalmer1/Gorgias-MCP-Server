@@ -58,7 +58,7 @@ export function registerJobTools(server: McpServer, client: GorgiasClient) {
         context: z.object({
           channel_connection_external_ids: z.array(z.string()).optional().describe("List of channel connection external IDs to scope the job."),
         }).optional().describe("Additional context for the job."),
-      }).optional().describe("Job-type-specific configuration parameters. Structure depends on the type field."),
+      }).describe("Job-type-specific configuration parameters. REQUIRED. Structure depends on the type field — e.g. applyMacro needs macro_id + ticket_ids, updateTicket needs updates, importMacro needs url."),
     },
     annotations: { readOnlyHint: false, openWorldHint: true },
   }, safeHandler(async (args) => {

@@ -140,7 +140,9 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ source_id, target_id, ...body }) => {
-    const result = await client.put(`/api/customers/merge`, { ...body, source_id, target_id });
+    // source_id and target_id are query parameters, NOT body fields, per the
+    // Gorgias REST API spec for PUT /api/customers/merge.
+    const result = await client.put(`/api/customers/merge`, body, { source_id, target_id });
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 

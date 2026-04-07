@@ -23,7 +23,7 @@ export function registerTicketTools(server: McpServer, client: GorgiasClient) {
       view_id: z.number().min(1).optional().describe("ID of a view — returns tickets matching the filters of that view"),
       rule_id: z.number().min(1).optional().describe("ID of a rule — returns tickets matching the filters of that rule"),
       ticket_ids: z.array(z.number().min(1)).min(1).max(100).optional().describe("Array of specific ticket IDs to retrieve (max 100)"),
-      trashed: z.boolean().optional().describe("Whether to include trashed tickets in the response (default: false)"),
+      trashed: z.boolean().optional().describe("Whether to include trashed tickets in the response. Per the Gorgias API spec, the default is true (trashed tickets ARE included by default). Pass false to exclude them."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -155,7 +155,10 @@ Each message in the 'messages' array must include:
       closed_datetime: z.string().nullable().optional().describe("When the ticket was closed (ISO 8601). Setting this closes the ticket."),
       trashed_datetime: z.string().nullable().optional().describe("When the ticket was trashed (ISO 8601). Set to null to restore from trash."),
       opened_datetime: z.string().nullable().optional().describe("When the ticket was first opened (ISO 8601)"),
-      created_datetime: z.string().nullable().optional().describe("When the ticket was created — can be used to backdate (ISO 8601)"),
+      // NOTE: `created_datetime` is intentionally NOT exposed on update. The
+      // Gorgias UpdateTicket schema does not list it as a writable field — it
+      // is set at creation time and is immutable thereafter. To backdate a
+      // ticket, set `created_datetime` on `gorgias_create_ticket` instead.
       updated_datetime: z.string().nullable().optional().describe("When the ticket was last updated (ISO 8601)"),
       last_message_datetime: z.string().nullable().optional().describe("When the last message was sent (ISO 8601)"),
       last_received_message_datetime: z.string().nullable().optional().describe("When the last customer message was sent (ISO 8601)"),
