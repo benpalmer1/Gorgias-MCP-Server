@@ -180,7 +180,7 @@ Alternatively, create `.mcp.json` manually in your project root:
 }
 ```
 
-> **Note:** The `-e` flag in `claude mcp add` passes arguments to the command, not environment variables. Use `claude mcp add-json` (shown above) to set environment variables correctly.
+> **Note:** When using `claude mcp add` with `-e KEY=VALUE` flags, place them **before** the `--` separator (e.g., `claude mcp add gorgias -e GORGIAS_DOMAIN=mycompany -- npx gorgias-mcp-server`). Flags after `--` are passed as command arguments, not environment variables. For multiple env vars, `claude mcp add-json` (shown above) is the easiest approach.
 
 > **Note:** If you add the MCP server mid-session, you may need to restart Claude Code (`/quit` and relaunch) for the tools to appear. Verify connection with `claude mcp list`.
 
