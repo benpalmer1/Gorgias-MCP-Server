@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import { registerCustomerTools } from "../tools/customers.js";
 import { registerRuleTools } from "../tools/rules.js";
+import { registerMacroTools } from "../tools/macros.js";
 import { registerJobTools } from "../tools/jobs.js";
 import { registerSatisfactionSurveyTools } from "../tools/satisfaction-surveys.js";
 import { registerTicketTools } from "../tools/tickets.js";
@@ -394,6 +395,109 @@ describe("voice-calls list tools — phantom param removal", () => {
 // ---------------------------------------------------------------------------
 // M4 — smart_stats truncation hint no longer suggests "add dimensions"
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// H10/H12 — update_macro and update_rule support partial updates
+// ---------------------------------------------------------------------------
+
+describe("partial-update schemas (H10/H12)", () => {
+  it("gorgias_update_macro accepts partial payloads (no required fields beyond id)", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerMacroTools(server as never, client);
+
+    const tool = tools.get("gorgias_update_macro")!;
+    const schema = z.object(tool.config.inputSchema!);
+
+    // Just changing intent should be valid; previously this required name+actions.
+    expect(schema.safeParse({ id: 7, intent: "refund/request" }).success).toBe(true);
+    expect(schema.safeParse({ id: 7, language: "en" }).success).toBe(true);
+    expect(schema.safeParse({ id: 7 }).success).toBe(true);
+  });
+
+  it("gorgias_update_macro still accepts a full payload with name+actions", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerMacroTools(server as never, client);
+
+    const tool = tools.get("gorgias_update_macro")!;
+    const schema = z.object(tool.config.inputSchema!);
+    expect(
+      schema.safeParse({
+        id: 7,
+        name: "renamed",
+        actions: [{ name: "set-status", title: "Close", arguments: { status: "closed" } }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("gorgias_update_rule accepts partial payloads (no required fields beyond id)", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerRuleTools(server as never, client);
+
+    const tool = tools.get("gorgias_update_rule")!;
+    const schema = z.object(tool.config.inputSchema!);
+    expect(schema.safeParse({ id: 5, deactivated_datetime: null }).success).toBe(true);
+    expect(schema.safeParse({ id: 5, priority: 200 }).success).toBe(true);
+    expect(schema.safeParse({ id: 5 }).success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C2/M1 — smart_stats preserves null-measure rows and unions all column keys
+// ---------------------------------------------------------------------------
+
+describe("smart_stats null-measure preservation and column union", () => {
+  it("does NOT drop rows where every measure is null — surfaces nullMeasureRowCount instead", async () => {
+    const { server, tools } = makeStubServer();
+    // Three rows: two have non-null ticketCount, one is all-null.
+    const fakeRows = [
+      { agentId: 1, ticketCount: 5 },
+      { agentId: 2, ticketCount: null },
+      { agentId: 3, ticketCount: 7 },
+    ];
+    const { client } = makeStubClient([{ data: fakeRows }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created",
+      start_date: "2026-01-01",
+      end_date: "2026-01-31",
+    });
+    const json = await getResponseJson(result);
+
+    // All 3 rows preserved
+    expect((json.data as unknown[]).length).toBe(3);
+    expect(json.totalRows).toBe(3);
+    expect(json.rawRowCount).toBe(3);
+    expect(json.nullMeasureRowCount).toBe(1);
+    // Hint mentions the null rows
+    expect(String(json._hint)).toMatch(/all-null measure values/i);
+  });
+
+  it("column metadata is the union of keys across ALL rows, not just rows[0]", async () => {
+    const { server, tools } = makeStubServer();
+    // First row only has 'a'; second row has 'a' and 'b'.
+    const fakeRows = [
+      { a: 1 },
+      { a: 2, b: "extra" },
+    ];
+    const { client } = makeStubClient([{ data: fakeRows }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created",
+      start_date: "2026-01-01",
+      end_date: "2026-01-31",
+      measures: [], // disable null filter so both rows survive
+    });
+    const json = await getResponseJson(result);
+    const columns = json.columns as Record<string, string>;
+    expect(columns).toHaveProperty("a");
+    expect(columns).toHaveProperty("b");
+  });
+});
 
 describe("smart_stats truncation hint", () => {
   it("does NOT recommend 'add dimensions' (which would make truncation worse)", async () => {

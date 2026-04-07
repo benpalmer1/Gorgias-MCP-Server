@@ -92,11 +92,11 @@ export function registerMacroTools(server: McpServer, client: GorgiasClient) {
   // --- Update Macro ---
   server.registerTool("gorgias_update_macro", {
     title: "Update Macro",
-    description: "PUT /api/macros/{id} — Update an existing macro by ID. This is a full-replacement operation — the entire actions array is replaced. Include all actions you want to retain.",
+    description: "PUT /api/macros/{id} — Partial update of a macro by ID. All body fields are optional; only the fields you supply are modified. NOTE: if you include `actions`, the entire actions array is replaced — you cannot append individual actions.",
     inputSchema: {
       id: z.number().describe("The unique ID of the macro to update"),
-      name: z.string().describe("The name of the macro. Should be a name that can be easily searched."),
-      actions: z.array(z.record(z.string(), z.unknown())).describe("A list of actions to be applied on tickets. Replaces the existing actions list entirely. Each action object should have 'name', 'title', 'arguments', and optionally 'type' and 'description'."),
+      name: z.string().optional().describe("New name for the macro."),
+      actions: z.array(z.record(z.string(), z.unknown())).optional().describe("If provided, replaces the entire actions list. Each action object should have 'name', 'title', 'arguments', and optionally 'type' and 'description'."),
       external_id: z.string().nullable().optional().describe("External ID of the macro in a foreign system. Not used by Gorgias; set to any custom value."),
       intent: z.enum([
         "discount/request",
