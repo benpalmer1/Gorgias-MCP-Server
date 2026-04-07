@@ -8,6 +8,7 @@ import {
   DIMENSION_ALIASES,
   BROKEN_SCOPES,
   SCOPE_REQUIRED_FILTERS,
+  TIME_BASED_SCOPES,
   kebabToCamelCase,
   humaniseKey,
   adjustEndDateForExclusive,
@@ -30,7 +31,7 @@ Breakdown: tags, ticket-fields
 Voice: voice-calls, voice-agent-events, voice-calls-summary
 Other: online-time, ticket-sla, knowledge-insights
 
-Broken scopes (return API errors): automation-rate, online-time, voice-agent-events, voice-calls-summary.
+Broken scopes (return API errors): automation-rate, online-time, voice-calls, voice-agent-events, voice-calls-summary.
 
 For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve_statistic.`,
     inputSchema: {
@@ -170,7 +171,7 @@ For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve
         const userMap = new Map<number, string>();
         for (const u of users) {
           const user = u as any;
-          if (user.id && user.name) userMap.set(user.id, user.name);
+          if (user.id && user.name) userMap.set(user.id, String(user.name).trim());
         }
         for (const row of rows) {
           if (typeof row.agentId === "number") {
@@ -195,6 +196,9 @@ For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve
       hint += " Present data in a table format.";
       if (hasAgentDimension) {
         hint += " Agent names have been resolved from IDs.";
+      }
+      if (TIME_BASED_SCOPES.has(scope)) {
+        hint += " Time values are in seconds.";
       }
       hint += " Bold metric names for readability.";
 

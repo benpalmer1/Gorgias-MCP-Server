@@ -68,6 +68,26 @@ describe("projectTicket", () => {
     expect(result.assigneeTeam).toBeNull();
   });
 
+  it("trims trailing whitespace from customer name", () => {
+    const result = projectTicket({ ...rawTicket, customer: { email: "a@b.com", name: "Henry " } });
+    expect(result.customerName).toBe("Henry");
+  });
+
+  it("trims trailing whitespace from assignee name", () => {
+    const result = projectTicket({ ...rawTicket, assignee_user: { name: "Sarah " } });
+    expect(result.assigneeName).toBe("Sarah");
+  });
+
+  it("trims trailing whitespace from assignee team name", () => {
+    const result = projectTicket({ ...rawTicket, assignee_team: { name: "  Support Team  " } });
+    expect(result.assigneeTeam).toBe("Support Team");
+  });
+
+  it("trims whitespace from tag names", () => {
+    const result = projectTicket({ ...rawTicket, tags: [{ name: " urgent " }, { name: "shipping " }] });
+    expect(result.tags).toEqual(["urgent", "shipping"]);
+  });
+
   it("defaults tags to empty array when tags property is missing", () => {
     const ticketWithoutTags = {
       id: 900,
@@ -136,6 +156,16 @@ describe("projectMessage", () => {
     const result = projectMessage({ ...rawMessage, sender: null });
     expect(result.senderName).toBeNull();
     expect(result.senderEmail).toBeNull();
+  });
+
+  it("trims trailing whitespace from sender name", () => {
+    const result = projectMessage({ ...rawMessage, sender: { name: "Henry ", email: "h@co.com" } });
+    expect(result.senderName).toBe("Henry");
+  });
+
+  it("trims whitespace from intent names", () => {
+    const result = projectMessage({ ...rawMessage, intents: [{ name: " shipping_inquiry " }] });
+    expect(result.intents).toEqual(["shipping_inquiry"]);
   });
 
   it("handles null/undefined intents", () => {

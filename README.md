@@ -142,6 +142,48 @@ The config file is located at:
 - **Linux**: `~/.config/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
+### Claude Code (CLI)
+
+Add the server to your project using `claude mcp add-json`:
+
+```bash
+claude mcp add-json gorgias '{
+  "command": "npx",
+  "args": ["gorgias-mcp-server"],
+  "env": {
+    "GORGIAS_DOMAIN": "mycompany",
+    "GORGIAS_EMAIL": "admin@mycompany.com",
+    "GORGIAS_API_KEY": "your-api-key-here",
+    "GORGIAS_ACCESS_LEVEL": "readonly"
+  }
+}' -s project
+```
+
+This creates a `.mcp.json` file in the project root. You can also add it at user scope with `-s user`.
+
+Alternatively, create `.mcp.json` manually in your project root:
+
+```json
+{
+  "mcpServers": {
+    "gorgias": {
+      "command": "npx",
+      "args": ["gorgias-mcp-server"],
+      "env": {
+        "GORGIAS_DOMAIN": "mycompany",
+        "GORGIAS_EMAIL": "admin@mycompany.com",
+        "GORGIAS_API_KEY": "your-api-key-here",
+        "GORGIAS_ACCESS_LEVEL": "readonly"
+      }
+    }
+  }
+}
+```
+
+> **Note:** The `-e` flag in `claude mcp add` passes arguments to the command, not environment variables. Use `claude mcp add-json` (shown above) to set environment variables correctly.
+
+> **Note:** If you add the MCP server mid-session, you may need to restart Claude Code (`/quit` and relaunch) for the tools to appear. Verify connection with `claude mcp list`.
+
 ### Programmatic Usage (Web Apps & Chatbots)
 
 The package exports a `createGorgiasServer()` factory for embedding in your own application. This is how you integrate Gorgias MCP into a web application chatbot backend.
