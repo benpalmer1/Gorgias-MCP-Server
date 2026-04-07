@@ -8,19 +8,11 @@ export function registerVoiceCallTools(server: McpServer, client: GorgiasClient)
   // --- List Voice Calls ---
   server.registerTool("gorgias_list_voice_calls", {
     title: "List Voice Calls",
-    description: "GET /api/phone/voice-calls — List voice calls matching the given parameters, paginated, and ordered.",
+    description: "GET /api/phone/voice-calls — List voice calls, cursor-paginated. Per the Gorgias API spec, this endpoint accepts only cursor, limit, and ticket_id as query parameters.",
     inputSchema: {
-      limit: z.number().optional().describe("Maximum number of voice call records to return per page"),
-      offset: z.number().optional().describe("Number of records to skip before returning results (offset-based pagination)"),
-      cursor: z.string().optional().describe("Cursor value for cursor-based pagination (use next_cursor or prev_cursor from a previous response)"),
-      order_by: z.string().optional().describe("Field name to order results by"),
-      direction: z.enum(["inbound", "outbound"]).optional().describe("Filter by call direction: 'inbound' or 'outbound'"),
-      status: z.string().optional().describe("Filter by call status"),
-      ticket_id: z.number().optional().describe("Filter voice calls belonging to a specific ticket"),
-      customer_id: z.number().optional().describe("Filter voice calls associated with a specific customer"),
-      queue_id: z.number().optional().describe("Filter voice calls managed by a specific voice queue"),
-      phone_number_id: z.number().optional().describe("Filter voice calls associated with a specific phone number"),
-      integration_id: z.number().optional().describe("Filter voice calls managed by a specific voice integration"),
+      cursor: z.string().optional().describe("Cursor value for pagination (use next_cursor or prev_cursor from a previous response)"),
+      limit: z.number().int().min(1).max(100).optional().describe("Maximum number of voice call records to return per page (1-100, default 30)"),
+      ticket_id: z.number().int().optional().describe("Filter voice calls belonging to a specific ticket"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -44,13 +36,11 @@ export function registerVoiceCallTools(server: McpServer, client: GorgiasClient)
   // --- List Voice Call Events ---
   server.registerTool("gorgias_list_voice_call_events", {
     title: "List Voice Call Events",
-    description: "GET /api/phone/voice-call-events — List voice call events matching the given parameters, paginated, and ordered. Events represent discrete occurrences during the lifecycle of voice calls.",
+    description: "GET /api/phone/voice-call-events — List voice call events, cursor-paginated. Events represent discrete occurrences during the lifecycle of voice calls. Per the Gorgias API spec, this endpoint accepts only cursor, limit, and call_id.",
     inputSchema: {
-      limit: z.number().optional().describe("Maximum number of records to return per page (default: 30)"),
       cursor: z.string().optional().describe("Pagination cursor for fetching the next or previous page"),
-      order_by: z.string().optional().describe("Field and direction to sort results (e.g., '-created_datetime')"),
-      call_id: z.number().optional().describe("Filter events to those belonging to a specific voice call"),
-      account_id: z.number().optional().describe("Filter events to those belonging to a specific account"),
+      limit: z.number().int().min(1).max(100).optional().describe("Maximum number of records to return per page (1-100, default 30)"),
+      call_id: z.number().int().optional().describe("Filter events to those belonging to a specific voice call"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -74,12 +64,11 @@ export function registerVoiceCallTools(server: McpServer, client: GorgiasClient)
   // --- List Voice Call Recordings ---
   server.registerTool("gorgias_list_voice_call_recordings", {
     title: "List Voice Call Recordings",
-    description: "GET /api/phone/voice-call-recordings — List voice call recordings (voicemails and call recordings) matching the given parameters, paginated, and ordered.",
+    description: "GET /api/phone/voice-call-recordings — List voice call recordings (voicemails and call recordings), cursor-paginated. Per the Gorgias API spec, this endpoint accepts only cursor, limit, and call_id.",
     inputSchema: {
-      limit: z.number().optional().describe("Maximum number of records to return per page (default: 30)"),
       cursor: z.string().optional().describe("Pagination cursor for fetching the next or previous page"),
-      order_by: z.string().optional().describe("Field and direction to sort results (e.g., '-created_datetime')"),
-      call_id: z.number().optional().describe("Filter recordings to those belonging to a specific voice call"),
+      limit: z.number().int().min(1).max(100).optional().describe("Maximum number of records to return per page (1-100, default 30)"),
+      call_id: z.number().int().optional().describe("Filter recordings to those belonging to a specific voice call"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -103,7 +92,7 @@ export function registerVoiceCallTools(server: McpServer, client: GorgiasClient)
   // --- Delete Voice Call Recording ---
   server.registerTool("gorgias_delete_voice_call_recording", {
     title: "Delete Voice Call Recording",
-    description: "DELETE /api/phone/voice-call-recordings/{id} — Permanently delete a voice call recording or voicemail. Returns the deleted recording object with deleted_datetime and deleted_by_user_id populated.",
+    description: "DELETE /api/phone/voice-call-recordings/{id} — Permanently delete a voice call recording or voicemail. Returns 204 No Content on success.",
     inputSchema: {
       id: z.number().describe("The unique identifier of the voice call recording to delete"),
     },

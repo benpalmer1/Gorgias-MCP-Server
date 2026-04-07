@@ -6,7 +6,7 @@ An MCP server that exposes the full Gorgias helpdesk API to AI assistants.
 
 ## What is this?
 
-Gorgias MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants -- Claude, and any other MCP-compatible client -- complete access to the Gorgias helpdesk platform. It ships with **114 tools**: 3 high-level "smart" tools that handle the most common workflows, plus 111 raw API tools covering every Gorgias REST endpoint.
+Gorgias MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants -- Claude, and any other MCP-compatible client -- complete access to the Gorgias helpdesk platform. It ships with **113 tools**: 3 high-level "smart" tools that handle the most common workflows, plus 110 raw API tools covering every Gorgias REST endpoint.
 
 Connect it to Claude Desktop (or any MCP client) and you can search tickets, read conversations, pull analytics, manage customers, and operate your entire helpdesk through natural language.
 
@@ -53,7 +53,7 @@ The three smart tools are the primary interface. They compose multiple API calls
 | `gorgias_smart_get_ticket` | Retrieves a ticket with its full conversation thread. Fetches ticket and messages in parallel, sorts chronologically, and projects to a compact format stripped to essential fields. |
 | `gorgias_smart_stats` | Analytics with automatic defaults, input validation, dimension resolution, and agent name-to-ID resolution. Covers volume, performance, quality, automation, voice, and breakdown scopes. |
 
-These handle the common 80% of use cases. The 111 raw tools provide direct API access for everything else -- bulk operations, custom field management, rule configuration, and more.
+These handle the common 80% of use cases. The 110 raw tools provide direct API access for everything else -- bulk operations, custom field management, rule configuration, and more.
 
 ---
 
@@ -100,7 +100,7 @@ Control which tools are exposed to the AI with `GORGIAS_ACCESS_LEVEL`:
 |-------|-------|----------|
 | `readonly` | 52 tools (all read/search/list/smart tools) | Analytics bots, dashboards, monitoring |
 | `agent` | 62 tools (readonly + reply, close, tag, reassign) | Customer-facing support chatbots |
-| `admin` | All 114 tools (default) | Internal admin tools, full API access |
+| `admin` | All 113 tools (default) | Internal admin tools, full API access |
 
 ```bash
 GORGIAS_ACCESS_LEVEL=readonly   # Only read operations exposed
@@ -293,7 +293,7 @@ import {
 
 ## Available Tools
 
-114 tools organised by category:
+113 tools organised by category:
 
 | Category | Count | Description |
 |----------|------:|-------------|
@@ -304,7 +304,7 @@ import {
 | **Tags** | 7 | Full CRUD, bulk delete, and tag merging |
 | **Views** | 7 | Full CRUD; list and search view items |
 | **Statistics & Reporting** | 3 | Retrieve statistics, download statistics, retrieve reporting data |
-| **Users** | 6 | User management and lookup |
+| **Users** | 5 | User management and lookup |
 | **Teams** | 5 | Team management |
 | **Rules** | 6 | Automation rule CRUD and management |
 | **Macros** | 7 | Macro template CRUD and management |

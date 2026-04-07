@@ -25,6 +25,8 @@ import { registerJobTools } from "../tools/jobs.js";
 import { registerSatisfactionSurveyTools } from "../tools/satisfaction-surveys.js";
 import { registerTicketTools } from "../tools/tickets.js";
 import { registerSmartStatsTools } from "../tools/smart-stats.js";
+import { registerUserTools } from "../tools/users.js";
+import { registerVoiceCallTools } from "../tools/voice-calls.js";
 import type { GorgiasClient } from "../client.js";
 
 // ---------------------------------------------------------------------------
@@ -315,6 +317,77 @@ describe("gorgias_list_tickets trashed parameter docs", () => {
       ((trashed as unknown) as { description: string }).description;
     expect(desc).toMatch(/default is true/i);
     expect(desc).not.toMatch(/default:\s*false/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C9 — gorgias_delete_users (bulk) is NOT registered (endpoint does not exist)
+// ---------------------------------------------------------------------------
+
+describe("users tool registration (no bulk delete)", () => {
+  it("does NOT register gorgias_delete_users — the bulk DELETE /api/users endpoint does not exist in the Gorgias API", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerUserTools(server as never, client);
+
+    expect(tools.has("gorgias_delete_users")).toBe(false);
+    // Single-user delete still works
+    expect(tools.has("gorgias_delete_user")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C16 — voice-calls list tools no longer expose phantom params
+// ---------------------------------------------------------------------------
+
+describe("voice-calls list tools — phantom param removal", () => {
+  let tools: Map<string, RegisteredTool>;
+
+  beforeEach(() => {
+    const { server, tools: t } = makeStubServer();
+    const { client } = makeStubClient();
+    registerVoiceCallTools(server as never, client);
+    tools = t;
+  });
+
+  it("gorgias_list_voice_calls only exposes cursor, limit, ticket_id (per Gorgias spec)", () => {
+    const shape = tools.get("gorgias_list_voice_calls")!.config.inputSchema!;
+    expect(Object.keys(shape).sort()).toEqual(["cursor", "limit", "ticket_id"]);
+  });
+
+  it("gorgias_list_voice_calls does NOT expose offset/order_by/direction/status/customer_id/queue_id/phone_number_id/integration_id", () => {
+    const shape = tools.get("gorgias_list_voice_calls")!.config.inputSchema!;
+    for (const phantom of [
+      "offset",
+      "order_by",
+      "direction",
+      "status",
+      "customer_id",
+      "queue_id",
+      "phone_number_id",
+      "integration_id",
+    ]) {
+      expect(shape[phantom]).toBeUndefined();
+    }
+  });
+
+  it("gorgias_list_voice_call_events only exposes cursor, limit, call_id", () => {
+    const shape = tools.get("gorgias_list_voice_call_events")!.config.inputSchema!;
+    expect(Object.keys(shape).sort()).toEqual(["call_id", "cursor", "limit"]);
+    expect(shape.account_id).toBeUndefined();
+    expect(shape.order_by).toBeUndefined();
+  });
+
+  it("gorgias_list_voice_call_recordings only exposes cursor, limit, call_id", () => {
+    const shape = tools.get("gorgias_list_voice_call_recordings")!.config.inputSchema!;
+    expect(Object.keys(shape).sort()).toEqual(["call_id", "cursor", "limit"]);
+    expect(shape.order_by).toBeUndefined();
+  });
+
+  it("gorgias_delete_voice_call_recording description states 204 No Content (not 'returns deleted object')", () => {
+    const desc = tools.get("gorgias_delete_voice_call_recording")!.config.description ?? "";
+    expect(desc).toMatch(/204 No Content/i);
+    expect(desc).not.toMatch(/returns the deleted recording object/i);
   });
 });
 

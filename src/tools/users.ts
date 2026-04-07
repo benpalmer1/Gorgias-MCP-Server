@@ -102,16 +102,9 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 
-  // --- Delete Users (Bulk) ---
-  server.registerTool("gorgias_delete_users", {
-    title: "Delete Users (Bulk)",
-    description: "DELETE /api/users — Bulk delete multiple users by ID. Deletion is permanent and irreversible.",
-    inputSchema: {
-      ids: z.array(z.number()).min(1).describe("Array of user IDs to delete"),
-    },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
-  }, safeHandler(async (args) => {
-    const result = await client.delete("/api/users", args);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-  }));
+  // NOTE: There is intentionally no `gorgias_delete_users` (bulk) tool.
+  // The Gorgias REST API does not expose a bulk DELETE on /api/users — only
+  // the single-id form DELETE /api/users/{id} is documented. Although the
+  // parallel /api/customers endpoint does support bulk deletion, /api/users
+  // does not. Users must be deleted one at a time via gorgias_delete_user.
 }
