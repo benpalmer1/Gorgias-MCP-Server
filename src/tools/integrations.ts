@@ -14,7 +14,7 @@ export function registerIntegrationTools(server: McpServer, client: GorgiasClien
       cursor: cursorSchema.optional().describe("Pagination cursor from a previous response (value of meta.next_cursor or meta.prev_cursor)"),
       limit: z.number().int().optional().describe("Maximum number of integrations to return per page (default: 30)"),
       order_by: z.enum(["created_datetime:asc", "created_datetime:desc"]).optional().describe("Sort order. Default: created_datetime:desc."),
-      type: z.enum(["http"]).optional().describe("Filter by integration type."),
+      type: z.enum(["http"]).optional().describe("Filter by integration type. Only 'http' is supported as a filter value, though other types (phone, email, gorgias_chat, etc.) exist in the system."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -100,6 +100,7 @@ export function registerIntegrationTools(server: McpServer, client: GorgiasClien
           "ticket-handed-over": z.boolean().optional().describe("Fires when a ticket is handed over"),
         }).optional().describe("Maps event type names to boolean flags controlling which ticket events trigger the integration"),
       }).optional().describe("HTTP configuration object. Only relevant for integrations of type 'http'"),
+      business_hours_id: idSchema.nullable().optional().describe("ID of the business hours schedule to associate with this integration (e.g. for phone integrations). Pass null to clear."),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id, ...body }) => {

@@ -16,8 +16,8 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
       order_by: z.enum([
         "created_datetime:asc", "created_datetime:desc",
         "name:asc", "name:desc",
-        "usage:asc", "usage:desc",
-      ]).optional().describe("Sort order. Default: created_datetime:desc."),
+        "usage:asc,name:asc", "usage:desc,name:desc",
+      ]).optional().describe("Sort order. Default: created_datetime:desc. Usage sorts require a secondary name sort (e.g. 'usage:desc,name:desc')."),
       search: z.string().optional().describe("Case-insensitive search on tag names"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },

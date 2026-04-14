@@ -49,7 +49,8 @@ describe("SCOPE_VALID_DIMENSIONS", () => {
 describe("DIMENSION_ALIASES", () => {
   it("maps friendly names to API names", () => {
     expect(DIMENSION_ALIASES["agent"]).toBe("agentId");
-    expect(DIMENSION_ALIASES["team"]).toBe("teamId");
+    // teamId is not a valid dimension in the Gorgias reporting API (verified 2026-04-14)
+    expect(DIMENSION_ALIASES["team"]).toBeNull();
     expect(DIMENSION_ALIASES["tag"]).toBe("tagId");
   });
 

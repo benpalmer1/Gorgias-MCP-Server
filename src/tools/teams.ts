@@ -9,7 +9,7 @@ export function registerTeamTools(server: McpServer, client: GorgiasClient) {
   // --- List Teams ---
   server.registerTool("gorgias_list_teams", {
     title: "List Teams",
-    description: "GET /api/teams — List teams matching the given parameters, ordered. Returns a plain JSON array of Team objects (not a paginated wrapper with next_cursor).",
+    description: "GET /api/teams — List teams matching the given parameters, ordered. Returns a cursor-based paginated response with data array and meta.next_cursor.",
     inputSchema: {
       cursor: cursorSchema.optional().describe("Pagination cursor from a previous response to advance to the next page"),
       limit: z.number().min(1).max(100).optional().describe("Max results per page (default: 30)"),

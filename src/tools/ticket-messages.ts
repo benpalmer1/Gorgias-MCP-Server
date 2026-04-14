@@ -141,9 +141,11 @@ export function registerTicketMessageTools(server: McpServer, client: GorgiasCli
         "twitter-direct-message", "whatsapp", "yotpo", "yotpo-review", "zendesk",
       ]).describe("How the message was received or sent from Gorgias"),
       // Optional body fields
+      public: z.boolean().optional().describe("Whether the message is visible to customers. Set to false for internal notes."),
       body_html: z.string().nullable().optional().describe("The full HTML version of the message body"),
       body_text: z.string().nullable().optional().describe("The full plain-text version of the message body"),
       external_id: z.string().nullable().optional().describe("ID of the message in a foreign system (Aircall, Zendesk, etc.)"),
+      integration_id: idSchema.nullable().optional().describe("ID of the integration used to send the message"),
       failed_datetime: z.string().nullable().optional().describe("ISO 8601 datetime when the message failed to be sent"),
       message_id: z.string().nullable().optional().describe("ID of the message on the originating service (email ID, Messenger message ID, etc.)"),
       receiver: z.record(z.string(), z.unknown()).nullable().optional().describe("The primary receiver of the message (user or customer). Optional for internal notes. Object with id (integer) and/or email (string). Example: {\"id\": 8} or {\"email\": \"john@example.com\"}"),
@@ -151,7 +153,10 @@ export function registerTicketMessageTools(server: McpServer, client: GorgiasCli
       sent_datetime: z.string().nullable().optional().describe("ISO 8601 datetime when the message was sent. If omitted, Gorgias manages the send lifecycle."),
       source: z.record(z.string(), z.unknown()).nullable().optional().describe("Routing information for the message. Object with fields: type (string, e.g. 'email'), from ({address, name}), to ([{address, name}]), cc ([{address, name}]), bcc ([{address, name}]). Example: {\"type\": \"email\", \"from\": {\"address\": \"sender@example.com\", \"name\": \"Sender Doe\"}, \"to\": [{\"address\": \"receiver@example.com\", \"name\": \"Receiver Doe\"}]}"),
       subject: z.string().nullable().optional().describe("The subject line of the message"),
-      attachments: z.array(z.record(z.string(), z.unknown())).optional().describe("List of file attachments. Each item: url (required), content_type (required), name (required), size (integer|null), public (boolean), extra (object)."),
+      mention_ids: z.array(idSchema).nullable().optional().describe("List of User IDs to mention in an internal note"),
+      attachments: z.array(z.record(z.string(), z.unknown())).nullable().optional().describe("List of file attachments. Each item: url (required), content_type (required), name (required), size (integer|null), public (boolean), extra (object)."),
+      headers: z.record(z.string(), z.unknown()).nullable().optional().describe("Message headers as key-value pairs (primarily for email)"),
+      meta: z.record(z.string(), z.unknown()).nullable().optional().describe("Custom structured metadata"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ ticket_id, id, action, ...body }) => {

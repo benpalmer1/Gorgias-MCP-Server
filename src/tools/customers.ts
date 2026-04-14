@@ -80,15 +80,23 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
     inputSchema: {
       id: idSchema.describe("The ID of the customer to update."),
       name: z.string().nullable().optional().describe("Full name of the customer."),
+      firstname: z.string().nullable().optional().describe("First name of the customer."),
+      lastname: z.string().nullable().optional().describe("Last name of the customer."),
       email: z.string().email().nullable().optional().describe("Primary email address of the customer."),
       external_id: z.string().nullable().optional().describe("ID of the customer in a foreign system (Stripe, Aircall, etc.). Not used by Gorgias."),
       language: z.string().nullable().optional().describe("The customer's preferred language (ISO 639-1 two-letter code, e.g. 'fr')."),
       timezone: z.string().nullable().optional().describe("The customer's preferred timezone (IANA timezone name, e.g. 'America/New_York'). Pass null to clear. Default on create: 'UTC'."),
+      note: z.string().nullable().optional().describe("A note associated with the customer for internal use. Pass null to clear."),
       channels: z.array(z.object({
         address: z.string().describe("Address of the customer channel (email, phone number, Facebook user ID, etc.)."),
         preferred: z.boolean().describe("Whether this is the preferred (primary) channel to contact this customer."),
         type: z.string().describe("Channel type: one of 'email', 'phone', 'chat', 'twitter', 'facebook', 'instagram', 'instagram-direct-message', 'whatsapp', or a custom channel slug."),
       })).optional().describe("The customer's contact channels. When included, REPLACES all existing channels."),
+      meta: z.record(z.string(), z.unknown()).nullable().optional().describe("Metadata associated with the customer. Pass null to clear."),
+      custom_fields: z.array(z.object({
+        id: idSchema.describe("The ID of the custom field definition to set."),
+        value: z.any().describe("The value to assign to the custom field. Pass null to clear."),
+      })).optional().describe("Custom field values to update on this customer."),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id, ...body }) => {
@@ -186,7 +194,7 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
       customer_id: idSchema.describe("The ID of the customer whose custom field value is to be updated."),
       id: idSchema.describe("The ID of the custom field to update the value for."),
       definition_id: idSchema.describe("The custom field DEFINITION ID (from gorgias_list_custom_fields). Sent as 'id' in the request body."),
-      value: z.union([z.string(), z.number().int(), z.boolean()]).describe("The new value for the custom field. Must be a string for text fields, an integer for number fields, or a boolean for boolean fields."),
+      value: z.any().describe("The new value for the custom field. String for text fields, number for number fields, boolean for boolean fields. Pass null to clear."),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ customer_id, id, definition_id, value }) => {

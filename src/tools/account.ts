@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
-import { idSchema, cursorSchema } from "./_id.js";
+import { idSchema } from "./_id.js";
 
 export function registerAccountTools(server: McpServer, client: GorgiasClient) {
 
@@ -20,12 +20,9 @@ export function registerAccountTools(server: McpServer, client: GorgiasClient) {
   // --- List Account Settings ---
   server.registerTool("gorgias_list_account_settings", {
     title: "List Account Settings",
-    description: "GET /api/account/settings — List account settings matching the given parameters, paginated. Returns an array of AccountSetting objects for the current account.",
+    description: "GET /api/account/settings — List account settings for the current account. Returns an array of AccountSetting objects. This endpoint does not support pagination — all settings are returned in a single response. Supports filtering by type.",
     inputSchema: {
       type: z.string().optional().describe("Filter settings by type. Only returns settings matching this type identifier (e.g. 'business-hours')"),
-      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response (value of meta.next_cursor)"),
-      limit: z.number().min(1).max(100).optional().describe("Maximum number of results per page"),
-      order_by: z.string().optional().describe("Sort order, e.g. 'created_datetime:desc'"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {

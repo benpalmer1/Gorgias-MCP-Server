@@ -14,16 +14,15 @@ export function registerEventTools(server: McpServer, client: GorgiasClient) {
       cursor: cursorSchema.optional().describe("Pagination cursor. Pass the value of next_cursor from a previous response to retrieve the next page"),
       limit: z.number().int().min(1).max(100).optional().describe("Maximum number of events to return per page (1-100, default 30)"),
       order_by: z.enum([
-        "created_datetime",
         "created_datetime:asc",
         "created_datetime:desc",
       ]).optional().describe("Sort order (default: 'created_datetime:desc')"),
       object_id: idSchema.optional().describe("Filter events by the ID of the associated object (e.g., ticket ID, customer ID)"),
       object_type: z.enum([
         "Account", "Macro", "Tag", "Customer", "Team", "View",
-        "Widget", "User", "Message", "Ticket", "TicketRule", "Integration",
+        "Widget", "User", "TicketMessage", "Ticket", "Rule", "Integration",
         "SatisfactionSurvey",
-      ]).optional().describe("Filter events by the type of the associated object"),
+      ]).optional().describe("Filter events by the type of the associated object. The API requires object_id when object_type is provided."),
       user_ids: z.array(idSchema).optional().describe("Filter events by the IDs of the users who triggered them. The Gorgias API expects an array of integers."),
       types: z.array(z.string()).optional().describe("Filter events by event type names. The Gorgias API expects an array of strings. Common values include 'ticket-created', 'ticket-updated', 'ticket-deleted', 'ticket-message-created', 'customer-created', etc. — there are 100+ possible values; see the Gorgias Event Object documentation for the full list."),
       created_datetime: z.object({
@@ -35,7 +34,16 @@ export function registerEventTools(server: McpServer, client: GorgiasClient) {
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
-    const result = await client.get("/api/events", args);
+    // Flatten created_datetime nested object into bracket-notation query params
+    // e.g. { gte: "2026-01-01" } → created_datetime[gte]=2026-01-01
+    const { created_datetime, ...rest } = args;
+    const query: Record<string, unknown> = { ...rest };
+    if (created_datetime) {
+      for (const [op, val] of Object.entries(created_datetime)) {
+        if (val !== undefined) query[`created_datetime[${op}]`] = val;
+      }
+    }
+    const result = await client.get("/api/events", query);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 

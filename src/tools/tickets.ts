@@ -253,7 +253,7 @@ Each message in the 'messages' array must include:
   // --- List Ticket Custom Field Values ---
   server.registerTool("gorgias_list_ticket_fields", {
     title: "List Ticket Custom Field Values",
-    description: "GET /api/tickets/{ticket_id}/custom-fields — List all custom field values currently assigned to a specific ticket. Returns a direct JSON array. Each item has an 'id' (field value record ID, used for update/delete) and 'value'. For full field definitions (labels, types), use GET /api/custom-fields.",
+    description: "GET /api/tickets/{ticket_id}/custom-fields — List all custom field values currently assigned to a specific ticket. Returns a direct JSON array. Each item has 'field' (nested object with 'id', 'label', 'object_type', 'definition'), 'prediction', and 'value'. Use field.id as the identifier for update/delete operations on this ticket's custom field values.",
     inputSchema: {
       ticket_id: idSchema.describe("The unique ID of the ticket whose custom field values to list"),
     },
@@ -266,11 +266,11 @@ Each message in the 'messages' array must include:
   // --- Update Single Ticket Custom Field Value ---
   server.registerTool("gorgias_update_ticket_field", {
     title: "Update Ticket Custom Field Value",
-    description: "PUT /api/tickets/{ticket_id}/custom-fields/{id} — Update the value of a single custom field on a ticket. The path 'id' is the field VALUE RECORD ID (from GET /api/tickets/{id}/custom-fields). The body 'id' is the CUSTOM FIELD DEFINITION ID (from GET /api/custom-fields). Value type must match the field's data_type: string for 'text', number for 'number', boolean for 'boolean'. Pass null to clear the value.",
+    description: "PUT /api/tickets/{ticket_id}/custom-fields/{id} — Update the value of a single custom field on a ticket. The path 'id' is the custom field definition ID (field.id from GET /api/tickets/{ticket_id}/custom-fields). Value type must match the field's data_type: string for 'text', number for 'number', boolean for 'boolean'. Pass null to clear the value.",
     inputSchema: {
       ticket_id: idSchema.describe("The unique ID of the ticket containing the custom field value to update"),
-      id: idSchema.describe("The field value record ID on the ticket (obtained from GET /api/tickets/{ticket_id}/custom-fields)"),
-      definition_id: idSchema.describe("The custom field DEFINITION ID (from GET /api/custom-fields). This is sent as 'id' in the request body."),
+      id: idSchema.describe("The custom field definition ID (field.id from GET /api/tickets/{ticket_id}/custom-fields)"),
+      definition_id: idSchema.describe("The custom field definition ID sent as 'id' in the request body. Typically the same as the path 'id'."),
       value: z.any().describe("The new value to assign. Type must match field's data_type: string (text), number (number), boolean (boolean). Pass null to clear."),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
@@ -302,10 +302,10 @@ Each message in the 'messages' array must include:
   // --- Delete Ticket Custom Field Value ---
   server.registerTool("gorgias_delete_ticket_field", {
     title: "Delete Ticket Custom Field Value",
-    description: "DELETE /api/tickets/{ticket_id}/custom-fields/{id} — Remove a custom field value from a ticket. This removes the value assignment on the ticket — it does NOT delete the custom field definition. The path 'id' is the field VALUE RECORD ID (from GET /api/tickets/{ticket_id}/custom-fields), not the definition ID. Returns 204 No Content on success.",
+    description: "DELETE /api/tickets/{ticket_id}/custom-fields/{id} — Remove a custom field value from a ticket. This removes the value assignment on the ticket — it does NOT delete the custom field definition. The path 'id' is the custom field definition ID (field.id from GET /api/tickets/{ticket_id}/custom-fields). Returns 204 No Content on success.",
     inputSchema: {
       ticket_id: idSchema.describe("The unique ID of the ticket whose custom field value to delete"),
-      id: idSchema.describe("The field value record ID on the ticket (obtained from GET /api/tickets/{ticket_id}/custom-fields)"),
+      id: idSchema.describe("The custom field definition ID (field.id from GET /api/tickets/{ticket_id}/custom-fields)"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ ticket_id, id }) => {

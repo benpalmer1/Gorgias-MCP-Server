@@ -37,9 +37,9 @@ Other: online-time, ticket-sla, knowledge-insights
 
 Broken scopes (return API errors): automation-rate, online-time, voice-calls, voice-agent-events, voice-calls-summary.
 
-Auto-pagination: fetches up to 'limit' rows (default 1000, max 10000) across multiple upstream pages. For queries producing many rows, use granularity: "none" (aggregate mode) to collapse the time axis. Date range is limited to 366 days per Gorgias API constraint. For manual page control, pass 'cursor' from a previous response's nextCursor field.
+Auto-pagination: fetches up to 'limit' rows (default 100, max 10000) across multiple upstream pages. For queries producing many rows, use granularity: "none" (aggregate mode) to collapse the time axis. Date range is limited to 366 days per Gorgias API constraint. For manual page control, pass 'cursor' from a previous response's nextCursor field.
 
-For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve_statistic.`,
+For raw API access, use gorgias_retrieve_reporting_statistic.`,
     inputSchema: {
       scope: z.string().describe("The statistic scope to query (e.g., 'tickets-created', 'first-response-time'). See tool description for full list by category."),
       start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").describe("Start date in YYYY-MM-DD format"),

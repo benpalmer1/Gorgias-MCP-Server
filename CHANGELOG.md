@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — write endpoint audit (20-agent verification pass)
+
+- **CRITICAL: Events `created_datetime` filter crash.** The nested `{gte, lt, ...}` object was passed directly to the query serializer which throws on objects. Now flattened to bracket-notation (`created_datetime[gte]=...`) before the API call.
+- **HIGH: Custom field path parameter describes.** `list_ticket_fields`, `update_ticket_field`, and `delete_ticket_field` all referenced a non-existent "value record ID". Fixed to document `field.id` (the definition ID) as the correct identifier, matching the live API response shape.
+- **Customer update missing fields.** `gorgias_update_customer` was missing `firstname`, `lastname`, `note`, `meta`, and `custom_fields` — all present on create and visible in GET responses. Added with `.nullable().optional()`.
+- **File download regex.** `resource_name` regex rejected dots, blocking every filename with an extension (e.g. `file.png`). Fixed to `/^[a-zA-Z0-9._-]+$/`.
+- **View update missing fields.** Added `search` and `section_id` to update schema (both present on create and in GET responses). Added `section_id` to create schema.
+- **Integration update missing `business_hours_id`.** Present on create but absent from update, preventing modification of business hours association on existing integrations.
+- **Ticket-message update missing fields.** Added `public` (controls customer visibility — critical for internal note toggling), `mention_ids`, `integration_id`, `headers`, `meta`. Fixed `attachments` nullable inconsistency.
+- **Customer field value type.** Changed from `z.union([string, int, boolean])` to `z.any()` to allow `null` (clearing values), matching the ticket equivalent.
+- **smart_stats description corrections.** Fixed "default 1000" to "default 100" (matches actual code). Removed stale reference to deleted `gorgias_retrieve_statistic` tool.
+- **Reporting scope count.** Fixed "26 total" to "27 total" in `gorgias_retrieve_reporting_statistic` description.
+- **Macros `order_by` enum.** Added `archived_datetime:asc/desc` sort options.
+- **Events `order_by` enum.** Removed bare `"created_datetime"` (inconsistent with other tools; only directional forms accepted).
+- **Integration type filter describe.** Clarified that only `"http"` is supported as a filter value, though other types exist in the system.
+
+### Fixed — live API verification (C12, C15, H21, M5)
+
+- **C12: User `role.name` full enum.** Widened from `["admin", "agent", "lite-agent"]` to `["admin", "agent", "basic-agent", "bot", "internal-agent", "lite-agent", "observer-agent"]` — all 7 roles observed on the live API.
+- **C15: Removed `statistics.ts`.** The legacy `/api/stats/{name}` endpoints return 400 "does not exist" on the live API. `gorgias_retrieve_statistic` and `gorgias_download_statistic` are removed. Use `gorgias_retrieve_reporting_statistic` instead.
+- **H21: `ticket-sla` filter clarification.** The `sla_id` filter member was never in the current code; the correct filter member for SLA policy filtering is `slaPolicyUuid` (confirmed via API error introspection). Documented in reporting-knowledge.ts.
+- **M5: `tags` scope time dimension fixed.** Default measure `ticketCount` is correct. Time dimension changed from `createdDatetime` to `timestamp` — the old value caused 400 errors on any non-aggregate query. Day/week/month granularity now works.
+- **C4/C5: Custom field value body shape.** Cannot verify without a write probe (READONLY constraint). Current `{id, value}` shape left as-is; requires future write-probe verification.
+
 ### Fixed — critical silent data loss (C1, C3)
 
 - **C1: `gorgias_smart_stats` auto-pagination.** The tool was hardcoded to `limit: 100` with no auto-pagination, silently truncating any reporting query that produced more than 100 rows. Now auto-paginates up to `limit` rows (default 100, max 10000) across multiple upstream pages. A 10-page safety cap converts runaway queries into `isError: true` with a resume cursor. Callers can also pass `cursor` for manual page-by-page control. The default limit stays at 100 to keep token budgets sane for chat agents, but callers can now explicitly raise it up to 10000.

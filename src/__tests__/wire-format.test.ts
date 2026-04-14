@@ -636,15 +636,15 @@ describe("gorgias_list_events array params and corrected enum", () => {
     expect(types.safeParse("ticket-created").success).toBe(false);
   });
 
-  it("object_type enum uses Message and TicketRule (corrected from TicketMessage and Rule) and includes SatisfactionSurvey", () => {
+  it("object_type enum uses TicketMessage and Rule (verified against live API 2026-04-14) and includes SatisfactionSurvey", () => {
     const shape = tools.get("gorgias_list_events")!.config.inputSchema!;
     const objectType = shape.object_type as z.ZodTypeAny;
-    expect(objectType.safeParse("Message").success).toBe(true);
-    expect(objectType.safeParse("TicketRule").success).toBe(true);
+    expect(objectType.safeParse("TicketMessage").success).toBe(true);
+    expect(objectType.safeParse("Rule").success).toBe(true);
     expect(objectType.safeParse("SatisfactionSurvey").success).toBe(true);
-    // Old wrong values should now be rejected
-    expect(objectType.safeParse("TicketMessage").success).toBe(false);
-    expect(objectType.safeParse("Rule").success).toBe(false);
+    // Old incorrect values should now be rejected
+    expect(objectType.safeParse("Message").success).toBe(false);
+    expect(objectType.safeParse("TicketRule").success).toBe(false);
   });
 
   it("exposes the created_datetime comparator filter", () => {

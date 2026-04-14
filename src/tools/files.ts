@@ -34,7 +34,7 @@ export function registerFileTools(server: McpServer, client: GorgiasClient) {
     inputSchema: {
       file_type: z.string().regex(/^[a-zA-Z0-9_-]+$/, "Must contain only alphanumeric characters, hyphens, and underscores").describe("The type/category classification of the file, derived from the attachment URL path (e.g., 'attachments')"),
       domain_hash: z.string().regex(/^[a-zA-Z0-9_-]+$/, "Must contain only alphanumeric characters, hyphens, and underscores").describe("A hashed identifier for the Gorgias account domain, derived from the attachment URL path"),
-      resource_name: z.string().regex(/^[a-zA-Z0-9_-]+$/, "Must contain only alphanumeric characters, hyphens, and underscores").describe("The name/identifier of the specific file resource, derived from the attachment URL path (e.g., 'package-damaged.png')"),
+      resource_name: z.string().regex(/^[a-zA-Z0-9._-]+$/, "Must contain only alphanumeric characters, dots, hyphens, and underscores").describe("The name/identifier of the specific file resource, derived from the attachment URL path (e.g., 'package-damaged.png')"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ file_type, domain_hash, resource_name }) => {

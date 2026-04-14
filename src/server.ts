@@ -24,7 +24,8 @@ import { registerReportingTools } from "./tools/reporting.js";
 import { registerRuleTools } from "./tools/rules.js";
 import { registerSatisfactionSurveyTools } from "./tools/satisfaction-surveys.js";
 import { registerSearchTools } from "./tools/search.js";
-import { registerStatisticsTools } from "./tools/statistics.js";
+// C15: statistics.ts removed — /api/stats/{name} endpoints return 400 "does not exist"
+// on the live API (verified 2026-04-14). Use gorgias_retrieve_reporting_statistic instead.
 import { registerTagTools } from "./tools/tags.js";
 import { registerTeamTools } from "./tools/teams.js";
 import { registerTicketTools } from "./tools/tickets.js";
@@ -95,7 +96,7 @@ export function createGorgiasServer(config: GorgiasServerConfig): McpServer {
   registerRuleTools(server, client);
   registerSatisfactionSurveyTools(server, client);
   registerSearchTools(server, client);
-  registerStatisticsTools(server, client);
+  // C15: registerStatisticsTools removed — legacy /api/stats/ endpoints don't exist
   registerTagTools(server, client);
   registerTeamTools(server, client);
   registerTicketTools(server, client);

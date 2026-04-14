@@ -55,7 +55,9 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
       language: z.enum(["fr", "en"]).optional().describe("UI locale for the user's Gorgias interface. Gorgias restricts this field to 'fr' or 'en' (agent UI language, not ticket content language)."),
       meta: z.record(z.string(), z.unknown()).optional().describe("Arbitrary key-value data to associate with the user. Not used by Gorgias internally."),
       role: z.object({
-        name: z.string().describe("Role name to assign. Known values: 'admin', 'agent'"),
+        name: z.enum(["admin", "agent", "basic-agent", "bot", "internal-agent", "lite-agent", "observer-agent"]).describe(
+          "Role name to assign",
+        ),
       }).describe("The role to assign to the user"),
       timezone: z.string().optional().describe("Preferred timezone as IANA timezone name (e.g. 'US/Pacific', 'Europe/Paris')"),
     },
@@ -82,7 +84,9 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
       old_password: z.string().optional().describe("Current password of the user. Required when changing the password."),
       password_confirmation: z.string().optional().describe("Current password of the user. Required when changing the email address."),
       role: z.object({
-        name: z.string().describe("Role name to assign. Known values: 'admin', 'agent'"),
+        name: z.enum(["admin", "agent", "basic-agent", "bot", "internal-agent", "lite-agent", "observer-agent"]).describe(
+          "Role name to assign",
+        ),
       }).optional().describe("The role to assign to the user"),
       firstname: z.string().nullable().optional().describe("First name of the user."),
       lastname: z.string().nullable().optional().describe("Last name of the user."),

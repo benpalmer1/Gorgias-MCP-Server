@@ -27,7 +27,8 @@ export const SCOPE_TIME_DIMENSION: Record<string, string> = {
   "messages-per-ticket": "createdDatetime",
   "ticket-handle-time": "createdDatetime",
   "online-time": "timestamp",
-  "tags": "createdDatetime",
+  // M5: live API requires "timestamp", not "createdDatetime" (verified 2026-04-14)
+  "tags": "timestamp",
   "auto-qa": "closedDatetime",
   "messages-received": "sentDatetime",
   "automation-rate": "createdDatetime",
@@ -82,30 +83,34 @@ export const SCOPE_DEFAULT_MEASURES: Record<string, string[]> = {
 
 /** Map each statistics scope to its array of valid dimension names. */
 export const SCOPE_VALID_DIMENSIONS: Record<string, string[]> = {
-  "tickets-created": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "tickets-closed": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "tickets-open": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "tickets-replied": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "one-touch-tickets": ["agentId", "channel", "integrationId", "storeId", "teamId"],
+  // Verified against live API 2026-04-14: "teamId" is NOT a valid dimension
+  // for the reporting stats API despite appearing in older documentation.
+  "tickets-created": ["agentId", "channel", "integrationId", "storeId"],
+  "tickets-closed": ["agentId", "channel", "integrationId", "storeId"],
+  "tickets-open": ["agentId", "channel", "integrationId", "storeId"],
+  "tickets-replied": ["agentId", "channel", "integrationId", "storeId"],
+  "one-touch-tickets": ["agentId", "channel", "integrationId", "storeId"],
   "zero-touch-tickets": ["channel", "integrationId", "storeId"],
-  "satisfaction-surveys": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "resolution-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "messages-sent": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "first-response-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "human-first-response-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "response-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "messages-per-ticket": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "ticket-handle-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
+  "satisfaction-surveys": ["agentId", "channel", "integrationId", "storeId"],
+  "resolution-time": ["agentId", "channel", "integrationId", "storeId"],
+  "messages-sent": ["agentId", "channel", "integrationId", "storeId"],
+  "first-response-time": ["agentId", "channel", "integrationId", "storeId"],
+  "human-first-response-time": ["agentId", "channel", "integrationId", "storeId"],
+  "response-time": ["agentId", "channel", "integrationId", "storeId"],
+  "messages-per-ticket": ["agentId", "channel", "integrationId", "storeId"],
+  "ticket-handle-time": ["agentId", "channel", "integrationId", "storeId"],
   "online-time": ["agentId"],
   "tags": ["tagId"],
-  "auto-qa": ["agentId", "channel", "integrationId", "storeId", "teamId", "categoryName"],
+  "auto-qa": ["agentId", "channel", "integrationId", "storeId", "categoryName"],
   "messages-received": ["channel", "integrationId", "storeId"],
   "automation-rate": ["channel", "integrationId", "storeId"],
-  "workload-tickets": ["agentId", "teamId"],
+  "workload-tickets": ["agentId"],
   "automated-interactions": ["eventType", "channel", "integrationId", "storeId"],
   "ticket-fields": ["customFieldValue"],
   "voice-calls": ["agentId", "integrationId", "phoneNumberId", "queueId"],
   "voice-agent-events": ["agentId", "integrationId"],
+  // H21: dimension list verified against live API — "status" is the only
+  // grouping dimension; "slaPolicyUuid" is a filter member, not a dimension.
   "ticket-sla": ["status"],
   "knowledge-insights": [],
   "voice-calls-summary": ["agentId", "integrationId", "phoneNumberId", "queueId"],
@@ -118,7 +123,7 @@ export const SCOPE_VALID_DIMENSIONS: Record<string, string[]> = {
 /** Map LLM-friendly dimension names to their API equivalents. */
 export const DIMENSION_ALIASES: Record<string, string | null> = {
   "agent": "agentId",
-  "team": "teamId",
+  "team": null, // teamId is not a valid dimension in the Gorgias reporting API
   "tag": "tagId",
   "store": "storeId",
   "integration": "integrationId",
