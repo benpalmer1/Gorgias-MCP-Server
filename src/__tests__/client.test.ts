@@ -383,6 +383,22 @@ describe("search() shape normalisation", () => {
     const result = await makeClient().search({ type: "customer" });
     expect(result).toEqual([{ id: 3 }]);
   });
+
+  it("L1: throws on unexpected response shape instead of returning empty array", async () => {
+    const { stub } = makeFetchStub([jsonResponse(200, { count: 5 })]);
+    globalThis.fetch = stub;
+    await expect(makeClient().search({ type: "customer" })).rejects.toThrow(
+      /unexpected search response shape/i,
+    );
+  });
+
+  it("L1: throws on string response", async () => {
+    const { stub } = makeFetchStub([jsonResponse(200, "not an array")]);
+    globalThis.fetch = stub;
+    await expect(makeClient().search({ type: "customer" })).rejects.toThrow(
+      /unexpected search response shape/i,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

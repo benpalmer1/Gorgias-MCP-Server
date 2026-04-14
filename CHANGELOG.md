@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **M3: `gorgias_smart_stats` 366-day pre-flight validation.** Date ranges exceeding 366 days are now rejected client-side with an actionable error before the API call is made.
 - **C3: `gorgias_smart_get_ticket` message auto-pagination.** The tool previously fetched only the first page of messages (30 by default, 100 max per page), silently dropping all subsequent messages on long-running tickets. Now auto-paginates up to `max_messages` (default 1000, hard cap 5000). Truncated conversations return `truncated: true` with a clear hint. The `fetchAllPages` helper in `cache.ts` is now exported for reuse.
 
+### Fixed — polish (L1, L8)
+
+- **L1: `search()` throws on unexpected shapes.** The `search()` method on `GorgiasClient` now throws `GorgiasApiError` when the response is neither a raw array nor a `{data: [...]}` wrapper, instead of silently returning `[]`. This catches schema drift and transient error pages.
+- **L8: Integration `http.headers` nullability note.** Added a comment documenting the uncertainty about whether the Gorgias API accepts `null` to clear headers on integration updates.
+
 ### Fixed — shared schema helpers (H19, L5, L3)
 
 - **H19: Repo-wide numeric ID coercion.** All resource ID parameters across 20 tool files now use a shared `idSchema` (`z.coerce.number().int().min(1)`) that accepts both numbers and numeric strings from LLM clients. Previously, `z.number()` rejected string-encoded IDs like `"12345"`, breaking nearly every tool call from clients that serialise numbers as strings.

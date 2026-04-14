@@ -85,6 +85,8 @@ export function registerIntegrationTools(server: McpServer, client: GorgiasClien
         request_content_type: z.string().describe("MIME type of the outbound request body (e.g. 'application/json')"),
         response_content_type: z.string().describe("Expected MIME type of the response from the external service (e.g. 'application/json')"),
         form: z.record(z.string(), z.string()).optional().describe("Key-value pairs sent as the request body or query parameters. Values support Gorgias template variables"),
+        // L8: headers nullability is uncertain in Gorgias docs. Keeping
+        // non-nullable for now; add .nullable() if the API accepts null.
         headers: z.record(z.string(), z.string()).optional().describe("Custom HTTP headers sent with the outbound request as key-value pairs (e.g. {'x-api-key': 'your-key-here'})"),
         hmac_secret: z.string().optional().describe("The HMAC secret used to sign HTTP calls to the external service (write-only)"),
         triggers: z.object({

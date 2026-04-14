@@ -289,6 +289,8 @@ export class GorgiasClient {
 
   /**
    * POST search that handles both raw array and { data: [...] } response formats.
+   * Throws on unexpected shapes (e.g. HTML error pages, schema drift) instead
+   * of silently returning an empty array.
    */
   async search(body: unknown): Promise<unknown[]> {
     const result = await this.post("/api/search", body);
@@ -296,6 +298,9 @@ export class GorgiasClient {
     if (result && typeof result === "object" && "data" in result && Array.isArray((result as any).data)) {
       return (result as any).data;
     }
-    return [];
+    throw new GorgiasApiError(
+      `Unexpected search response shape: expected array or {data: [...]}, got ${typeof result}`,
+      0,
+    );
   }
 }
