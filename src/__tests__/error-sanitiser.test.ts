@@ -336,14 +336,119 @@ describe("sanitiseErrorForLLM", () => {
     });
   });
 
+  describe("cause chain walking", () => {
+    it("walks single-level cause chain — both messages joined", () => {
+      const inner = new Error("connection refused");
+      const outer = new Error("request failed", { cause: inner });
+      const result = sanitiseErrorForLLM(outer);
+      expect(result).toContain("request failed");
+      expect(result).toContain("caused by:");
+      expect(result).toContain("connection refused");
+    });
+
+    it("redacts secrets in nested cause (sk_live_...)", () => {
+      const inner = new Error("apiKey=sk_live_secret123 rejected");
+      const outer = new Error("auth failed", { cause: inner });
+      const result = sanitiseErrorForLLM(outer);
+      expect(result).toContain("auth failed");
+      expect(result).not.toContain("sk_live_secret123");
+      expect(result).toContain("[REDACTED]");
+    });
+
+    it("redacts IPv4 in nested cause", () => {
+      const inner = new Error("timeout connecting to 192.168.1.50");
+      const outer = new Error("service unavailable", { cause: inner });
+      const result = sanitiseErrorForLLM(outer);
+      expect(result).toContain("service unavailable");
+      expect(result).not.toContain("192.168.1.50");
+      expect(result).toContain("[REDACTED]");
+    });
+
+    it("depth cap prevents runaway (10-deep chain truncates at 5)", () => {
+      // Build a chain of 10 errors
+      let current: Error = new Error("level-10");
+      for (let i = 9; i >= 1; i--) {
+        current = new Error(`level-${i}`, { cause: current });
+      }
+      const result = sanitiseErrorForLLM(current);
+      // Should have levels 1 through 5, but NOT 6+
+      expect(result).toContain("level-1");
+      expect(result).toContain("level-5");
+      expect(result).not.toContain("level-6");
+      expect(result).not.toContain("level-10");
+    });
+
+    it("cycle detection (a.cause = b; b.cause = a)", () => {
+      const a = new Error("error-a");
+      const b = new Error("error-b");
+      (a as Error & { cause: unknown }).cause = b;
+      (b as Error & { cause: unknown }).cause = a;
+      // Should not infinite loop — should terminate gracefully
+      const result = sanitiseErrorForLLM(a);
+      expect(result).toContain("error-a");
+      expect(result).toContain("error-b");
+    });
+
+    it("string cause handled", () => {
+      const err = new Error("outer message");
+      (err as Error & { cause: unknown }).cause = "string cause value";
+      const result = sanitiseErrorForLLM(err);
+      expect(result).toContain("outer message");
+      expect(result).toContain("caused by:");
+      expect(result).toContain("string cause value");
+    });
+
+    it("undefined cause terminates (regression)", () => {
+      const err = new Error("simple error");
+      // cause is undefined by default — should not crash
+      const result = sanitiseErrorForLLM(err);
+      expect(result).toBe("simple error");
+    });
+
+    it("stack is not included", () => {
+      const inner = new Error("inner");
+      const outer = new Error("outer", { cause: inner });
+      const result = sanitiseErrorForLLM(outer);
+      // Stack traces have "at " lines — verify they're not in output
+      expect(result).not.toMatch(/\bat\s+\S+\s+\(/);
+    });
+
+    it("non-Error cause with message field", () => {
+      const err = new Error("wrapper");
+      (err as Error & { cause: unknown }).cause = {
+        message: "plain object cause",
+      };
+      const result = sanitiseErrorForLLM(err);
+      expect(result).toContain("wrapper");
+      expect(result).toContain("caused by:");
+      expect(result).toContain("plain object cause");
+    });
+  });
+
+  describe("L4: tightened stack-trace regex", () => {
+    it("real stack trace line IS redacted", () => {
+      const msg =
+        "Error occurred\n    at Module._compile (internal/modules/cjs/loader.js:999:30)";
+      const result = sanitiseErrorForLLM(msg);
+      expect(result).not.toContain("Module._compile");
+      expect(result).not.toContain("loader.js:999:30");
+      expect(result).toContain("Error occurred");
+    });
+
+    it("prose starting with 'At' is NOT redacted", () => {
+      const msg = "At this point the process stopped responding";
+      const result = sanitiseErrorForLLM(msg);
+      expect(result).toBe("At this point the process stopped responding");
+    });
+  });
+
   describe("non-sensitive data preservation", () => {
-    it("preserves non-sensitive content while redacting email-adjacent sensitive patterns", () => {
-      // Emails are not in the redaction list, so they should survive.
-      // The test verifies we don't over-redact non-sensitive text.
+    it("redacts email addresses as PII", () => {
       const msg = "Customer john@example.com had a billing issue";
       const result = sanitiseErrorForLLM(msg);
       expect(result).toContain("Customer");
-      expect(result).toContain("john@example.com");
+      expect(result).not.toContain("john@example.com");
+      expect(result).toContain("[REDACTED_EMAIL]");
       expect(result).toContain("had a billing issue");
     });
 

@@ -6,6 +6,7 @@ import {
   DIMENSION_ALIASES,
   BROKEN_SCOPES,
   SCOPE_REQUIRED_FILTERS,
+  TIME_BASED_SCOPES,
   kebabToCamelCase,
   humaniseKey,
   adjustEndDateForExclusive,
@@ -31,13 +32,40 @@ describe("SCOPE_VALID_DIMENSIONS", () => {
     expect(SCOPE_VALID_DIMENSIONS["tickets-created"]).toContain("agentId");
     expect(SCOPE_VALID_DIMENSIONS["tags"]).toContain("tagId");
   });
+
+  it("ticket-sla only supports 'status' dimension", () => {
+    expect(SCOPE_VALID_DIMENSIONS["ticket-sla"]).toEqual(["status"]);
+  });
+
+  it("ticket-sla does not include agentId", () => {
+    expect(SCOPE_VALID_DIMENSIONS["ticket-sla"]).not.toContain("agentId");
+  });
+
+  it("zero-touch-tickets does not support agentId dimension", () => {
+    expect(SCOPE_VALID_DIMENSIONS["zero-touch-tickets"]).not.toContain("agentId");
+  });
 });
 
 describe("DIMENSION_ALIASES", () => {
   it("maps friendly names to API names", () => {
     expect(DIMENSION_ALIASES["agent"]).toBe("agentId");
-    expect(DIMENSION_ALIASES["team"]).toBe("teamId");
+    // teamId is not a valid dimension in the Gorgias reporting API (verified 2026-04-14)
+    expect(DIMENSION_ALIASES["team"]).toBeNull();
     expect(DIMENSION_ALIASES["tag"]).toBe("tagId");
+  });
+
+  it("maps 'policy' to null (no scope supports policyId)", () => {
+    expect(DIMENSION_ALIASES["policy"]).toBeNull();
+  });
+
+  it("every non-null alias targets a dimension in at least one scope", () => {
+    const allValidDims = new Set(
+      Object.values(SCOPE_VALID_DIMENSIONS).flat(),
+    );
+    for (const [_alias, target] of Object.entries(DIMENSION_ALIASES)) {
+      if (target === null) continue;
+      expect(allValidDims.has(target)).toBe(true);
+    }
   });
 });
 
@@ -46,6 +74,16 @@ describe("BROKEN_SCOPES", () => {
     expect(BROKEN_SCOPES["automation-rate"]).toBeTruthy();
     expect(BROKEN_SCOPES["online-time"]).toBeTruthy();
     expect(BROKEN_SCOPES["tickets-created"]).toBeUndefined();
+  });
+
+  it("includes voice-calls as a broken scope", () => {
+    expect(BROKEN_SCOPES["voice-calls"]).toBeTruthy();
+  });
+
+  it("includes all voice-related broken scopes", () => {
+    expect(BROKEN_SCOPES["voice-calls"]).toBeTruthy();
+    expect(BROKEN_SCOPES["voice-agent-events"]).toBeTruthy();
+    expect(BROKEN_SCOPES["voice-calls-summary"]).toBeTruthy();
   });
 });
 
@@ -102,5 +140,45 @@ describe("adjustEndDateForExclusive", () => {
 
   it("handles non-leap year Feb 28", () => {
     expect(adjustEndDateForExclusive("2027-02-28")).toBe("2027-03-01");
+  });
+});
+
+describe("TIME_BASED_SCOPES", () => {
+  it("includes all time-based scopes", () => {
+    expect(TIME_BASED_SCOPES.has("first-response-time")).toBe(true);
+    expect(TIME_BASED_SCOPES.has("human-first-response-time")).toBe(true);
+    expect(TIME_BASED_SCOPES.has("response-time")).toBe(true);
+    expect(TIME_BASED_SCOPES.has("resolution-time")).toBe(true);
+    expect(TIME_BASED_SCOPES.has("ticket-handle-time")).toBe(true);
+  });
+
+  it("does not include non-time scopes", () => {
+    expect(TIME_BASED_SCOPES.has("tickets-created")).toBe(false);
+    expect(TIME_BASED_SCOPES.has("satisfaction-surveys")).toBe(false);
+    expect(TIME_BASED_SCOPES.has("tags")).toBe(false);
+  });
+});
+
+describe("consistency checks", () => {
+  const allScopes = Object.keys(SCOPE_TIME_DIMENSION);
+
+  it("every scope has a time dimension, default measures, and valid dimensions", () => {
+    for (const scope of allScopes) {
+      expect(SCOPE_TIME_DIMENSION[scope]).toBeDefined();
+      expect(SCOPE_DEFAULT_MEASURES[scope]).toBeDefined();
+      expect(SCOPE_VALID_DIMENSIONS[scope]).toBeDefined();
+    }
+  });
+
+  it("SCOPE_DEFAULT_MEASURES keys match SCOPE_TIME_DIMENSION keys", () => {
+    const timeDimScopes = new Set(Object.keys(SCOPE_TIME_DIMENSION));
+    const measureScopes = new Set(Object.keys(SCOPE_DEFAULT_MEASURES));
+    expect(timeDimScopes).toEqual(measureScopes);
+  });
+
+  it("SCOPE_VALID_DIMENSIONS keys match SCOPE_TIME_DIMENSION keys", () => {
+    const timeDimScopes = new Set(Object.keys(SCOPE_TIME_DIMENSION));
+    const validDimScopes = new Set(Object.keys(SCOPE_VALID_DIMENSIONS));
+    expect(timeDimScopes).toEqual(validDimScopes);
   });
 });

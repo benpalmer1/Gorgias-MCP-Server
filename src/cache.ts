@@ -59,23 +59,44 @@ const PAGE_LIMIT = 100;
 // endpoint. Handles both the standard `{ data, meta }` wrapper and plain
 // array responses (e.g. /api/teams).
 // ---------------------------------------------------------------------------
-async function fetchAllPages(
+
+export interface FetchAllPagesResult {
+  items: unknown[];
+  pagesFetched: number;
+  truncated: boolean;
+}
+
+export interface FetchAllPagesOptions {
+  /** Per-page request size. Defaults to 100 (the Gorgias maximum for most collections). */
+  pageLimit?: number;
+  /** Hard cap on total items returned. When reached, truncated=true and pagination stops. */
+  maxItems?: number;
+}
+
+export async function fetchAllPages(
   client: GorgiasClient,
   endpoint: string,
-): Promise<unknown[]> {
-  const allResults: unknown[] = [];
+  options: FetchAllPagesOptions = {},
+): Promise<FetchAllPagesResult> {
+  const pageLimit = options.pageLimit ?? PAGE_LIMIT;
+  const maxItems = options.maxItems ?? Number.POSITIVE_INFINITY;
+
+  const items: unknown[] = [];
   let cursor: string | undefined;
+  let pagesFetched = 0;
+  let truncated = false;
 
   do {
-    const params: Record<string, unknown> = { limit: PAGE_LIMIT };
+    const params: Record<string, unknown> = { limit: pageLimit };
     if (cursor) params.cursor = cursor;
 
     const response = await client.get(endpoint, params);
+    pagesFetched++;
 
-    // Some Gorgias endpoints (e.g. /api/teams) return a plain array.
+    // Plain-array endpoints (e.g. /api/teams) — single page, no cursor.
     if (Array.isArray(response)) {
-      allResults.push(...response);
-      break; // plain arrays are not paginated
+      items.push(...response);
+      break;
     }
 
     const body = response as {
@@ -84,14 +105,37 @@ async function fetchAllPages(
     };
 
     if (Array.isArray(body.data)) {
-      allResults.push(...body.data);
+      for (const item of body.data) {
+        if (items.length >= maxItems) {
+          truncated = true;
+          break;
+        }
+        items.push(item);
+      }
     }
 
-    cursor =
-      body.meta?.next_cursor != null ? String(body.meta.next_cursor) : undefined;
+    if (truncated) break;
+
+    const rawCursor = body.meta?.next_cursor;
+    cursor = rawCursor != null && String(rawCursor).length > 0
+      ? String(rawCursor)
+      : undefined;
   } while (cursor);
 
-  return allResults;
+  return { items, pagesFetched, truncated };
+}
+
+/**
+ * Thin shim preserving the old `Promise<unknown[]>` return shape for
+ * internal callers (getReferenceData, getCachedUsers) that don't need
+ * truncation metadata.
+ */
+async function fetchAllPagesFlat(
+  client: GorgiasClient,
+  endpoint: string,
+): Promise<unknown[]> {
+  const { items } = await fetchAllPages(client, endpoint);
+  return items;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,11 +168,11 @@ export async function getReferenceData(client: GorgiasClient): Promise<Reference
   if (inflight) return inflight;
 
   const promise = Promise.all([
-    fetchAllPages(client, "/api/tags"),
-    fetchAllPages(client, "/api/teams"),
-    fetchAllPages(client, "/api/custom-fields?object_type=Ticket"),
-    fetchAllPages(client, "/api/views"),
-    fetchAllPages(client, "/api/users"),
+    fetchAllPagesFlat(client, "/api/tags"),
+    fetchAllPagesFlat(client, "/api/teams"),
+    fetchAllPagesFlat(client, "/api/custom-fields?object_type=Ticket"),
+    fetchAllPagesFlat(client, "/api/views"),
+    fetchAllPagesFlat(client, "/api/users"),
   ]).then(([tags, teams, customFields, views, users]) => {
     const result: ReferenceData = { tags, teams, customFields, views, users };
     cache.set(REFERENCE_DATA_KEY, result);
@@ -158,7 +202,7 @@ export async function getCachedUsers(client: GorgiasClient): Promise<unknown[]> 
   const inflight = inflightUsersPromises.get(client);
   if (inflight) return inflight;
 
-  const promise = fetchAllPages(client, "/api/users")
+  const promise = fetchAllPagesFlat(client, "/api/users")
     .then((users) => {
       cache.set(USERS_CACHE_KEY, users);
       inflightUsersPromises.delete(client);

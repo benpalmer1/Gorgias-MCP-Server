@@ -221,7 +221,7 @@ const TOPIC_KEYWORDS = new Set([
 
 interface SearchArgs {
   query: string;
-  search_type?: "auto" | "order_number" | "ticket_id" | "email" | "customer_name" | "keyword";
+  search_type?: "auto" | "order_number" | "ticket_id" | "email" | "customer_name" | "keyword" | "view";
   status?: "open" | "closed";
   start_date?: string;
   end_date?: string;
@@ -237,7 +237,16 @@ interface SearchResult {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function applyClientFilters(tickets: any[], args: SearchArgs): any[] {
+interface FilterResult {
+  tickets: any[];
+  preFilterCount: number;
+  postFilterCount: number;
+  droppedCount: number;
+  apiWindowExhausted: boolean;
+}
+
+function applyClientFilters(tickets: any[], args: SearchArgs, requestedLimit: number): FilterResult {
+  const pre = tickets.length;
   let filtered = tickets;
 
   if (args.status) {
@@ -254,20 +263,42 @@ function applyClientFilters(tickets: any[], args: SearchArgs): any[] {
     filtered = filtered.filter((t: any) => new Date(t.created_datetime).getTime() <= endMs);
   }
 
-  return filtered;
+  return {
+    tickets: filtered,
+    preFilterCount: pre,
+    postFilterCount: filtered.length,
+    droppedCount: pre - filtered.length,
+    apiWindowExhausted: pre >= requestedLimit,
+  };
+}
+
+function hasClientFilters(args: SearchArgs): boolean {
+  return !!(args.status || args.start_date || args.end_date);
 }
 
 function buildResponse(
   tickets: ProjectedTicket[],
   searchStrategy: string,
   hint: string,
+  filterResult?: FilterResult,
 ): SearchResult {
-  const payload = {
+  let finalHint = hint;
+  if (filterResult && filterResult.droppedCount > 0) {
+    finalHint += ` Note: ${filterResult.droppedCount} of ${filterResult.preFilterCount} rows were dropped by client-side filters (status/date).`;
+    if (filterResult.apiWindowExhausted) {
+      finalHint += " The API window was at the requested limit, so more matching tickets may exist beyond this page — narrow the query or raise the limit.";
+    }
+  }
+  const payload: Record<string, unknown> = {
     tickets,
     totalFound: tickets.length,
     searchStrategy,
-    _hint: hint,
+    _hint: finalHint,
   };
+  if (filterResult) {
+    payload.preFilterCount = filterResult.preFilterCount;
+    payload.postFilterCount = filterResult.postFilterCount;
+  }
   return {
     content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
   };
@@ -298,13 +329,14 @@ async function searchByEmail(
     limit,
   })) as { data: any[] };
 
-  const filtered = applyClientFilters(ticketsResponse.data, args);
-  const projected = filtered.map((t: any) => projectTicket(t));
+  const filterResult = applyClientFilters(ticketsResponse.data, args, limit);
+  const projected = filterResult.tickets.map((t: any) => projectTicket(t));
 
   return buildResponse(
     projected,
     "email",
     `Found ${projected.length} ticket(s) for customer ${email}. Use gorgias_smart_get_ticket to see full conversation details.`,
+    hasClientFilters(args) ? filterResult : undefined,
   );
 }
 
@@ -321,8 +353,7 @@ async function viewSearch(
 ): Promise<any[]> {
   const response = (await client.put("/api/views/0/items", {
     view: { search: searchTerm, type: "ticket-list" },
-    limit,
-  })) as { data?: any[] } | any[];
+  }, { limit })) as { data?: any[] } | any[];
 
   if (Array.isArray(response)) return response;
   return (response as any)?.data ?? [];
@@ -339,8 +370,8 @@ async function searchByOrderNumber(
   // customer data, etc. This finds the order number even in old tickets.
   const tickets = await viewSearch(client, originalQuery, limit);
 
-  const filtered = applyClientFilters(tickets, args);
-  const projected = filtered.slice(0, limit).map((t: any) => projectTicket(t));
+  const filterResult = applyClientFilters(tickets, args, limit);
+  const projected = filterResult.tickets.slice(0, limit).map((t: any) => projectTicket(t));
 
   return buildResponse(
     projected,
@@ -348,6 +379,7 @@ async function searchByOrderNumber(
     projected.length > 0
       ? `Found ${projected.length} ticket(s) matching order reference '${orderRef}'. Use gorgias_smart_get_ticket to see full conversation details.`
       : `No tickets found matching order reference '${orderRef}'. The order number may not appear in any ticket subjects or messages. Try searching by the customer's email instead.`,
+    hasClientFilters(args) ? filterResult : undefined,
   );
 }
 
@@ -375,13 +407,14 @@ async function fetchRecentTickets(
     order_by: "created_datetime:desc",
   })) as { data: any[] };
 
-  const filtered = applyClientFilters(response.data, args);
-  const projected = filtered.map((t: any) => projectTicket(t));
+  const filterResult = applyClientFilters(response.data, args, limit);
+  const projected = filterResult.tickets.map((t: any) => projectTicket(t));
 
   return buildResponse(
     projected,
     "recent",
     `Showing ${projected.length} most recent tickets. Use status, start_date, end_date to filter. Use gorgias_smart_get_ticket for full details.`,
+    hasClientFilters(args) ? filterResult : undefined,
   );
 }
 
@@ -409,13 +442,14 @@ async function searchByView(
     limit,
   })) as { data: any[] };
 
-  const filtered = applyClientFilters(response.data, args);
-  const projected = filtered.map((t: any) => projectTicket(t));
+  const filterResult = applyClientFilters(response.data, args, limit);
+  const projected = filterResult.tickets.map((t: any) => projectTicket(t));
 
   return buildResponse(
     projected,
     "view",
     `Showing tickets from view '${viewName}'. Use gorgias_smart_get_ticket for details.`,
+    hasClientFilters(args) ? filterResult : undefined,
   );
 }
 
@@ -445,13 +479,14 @@ async function searchByCustomerName(
     limit,
   })) as { data: any[] };
 
-  const filtered = applyClientFilters(ticketsResponse.data, args);
-  const projected = filtered.map((t: any) => projectTicket(t));
+  const filterResult = applyClientFilters(ticketsResponse.data, args, limit);
+  const projected = filterResult.tickets.map((t: any) => projectTicket(t));
 
   return buildResponse(
     projected,
     "customer_name",
     `Found ${projected.length} ticket(s) for customer '${customerLabel}'. Use gorgias_smart_get_ticket to see full conversation details.`,
+    hasClientFilters(args) ? filterResult : undefined,
   );
 }
 
@@ -464,8 +499,8 @@ async function searchByKeyword(
   // Use server-side full-text search (same approach as searchByOrderNumber)
   const tickets = await viewSearch(client, query, limit);
 
-  const filtered = applyClientFilters(tickets, args);
-  const projected = filtered.slice(0, limit).map((t: any) => projectTicket(t));
+  const filterResult = applyClientFilters(tickets, args, limit);
+  const projected = filterResult.tickets.slice(0, limit).map((t: any) => projectTicket(t));
 
   return buildResponse(
     projected,
@@ -473,6 +508,7 @@ async function searchByKeyword(
     projected.length > 0
       ? `Found ${projected.length} ticket(s) matching '${query}'. Use gorgias_smart_get_ticket to see full conversation details.`
       : `No tickets found matching '${query}'. Try different keywords or search by customer email.`,
+    hasClientFilters(args) ? filterResult : undefined,
   );
 }
 
@@ -497,10 +533,10 @@ export function registerSmartSearchTools(
             "The search query. What this means depends on search_type: for 'order_number' pass the order/reference number (e.g. '23151', 'ORD5356', '#ORD-5356'), for 'ticket_id' pass the Gorgias ticket ID, for 'email' pass the customer email, for 'auto' (default) pass any query and the tool will detect intent.",
           ),
         search_type: z
-          .enum(["auto", "order_number", "ticket_id", "email", "customer_name", "keyword"])
+          .enum(["auto", "order_number", "ticket_id", "email", "customer_name", "keyword", "view"])
           .optional()
           .describe(
-            "Explicitly set the search strategy. Use this when you know the intent from conversation context. 'order_number' — search for a Shopify/ecommerce order number or external reference (e.g. '23151', '#ORD5356') using server-side full-text search across subjects, messages, and metadata. 'ticket_id' — fetch a specific Gorgias ticket by its internal ID. 'email' — find tickets by customer email. 'customer_name' — fuzzy search for a customer by name. 'keyword' — search ticket subjects/excerpts for topic terms. 'auto' (default) — auto-detect intent from the query format.",
+            "Explicitly set the search strategy. 'order_number' — search by order/reference number. 'ticket_id' — fetch by Gorgias ticket ID. 'email' — find by customer email. 'customer_name' — fuzzy search by customer name. 'keyword' — search ticket subjects/excerpts. 'view' — find tickets in a named view. 'auto' (default) — auto-detect intent from query format.",
           ),
         status: z
           .enum(["open", "closed"])
@@ -562,6 +598,11 @@ export function registerSmartSearchTools(
           return await searchByKeyword(client, query, args, limit);
         }
 
+        if (searchType === "view") {
+          const result = await searchByView(client, query, args, limit);
+          return result ?? buildResponse([], "view", `No view found matching '${query}'.`);
+        }
+
         // -----------------------------------------------------------------
         // Auto-detection — progressively try strategies
         // -----------------------------------------------------------------
@@ -595,16 +636,11 @@ export function registerSmartSearchTools(
           return await fetchRecentTickets(client, args, limit);
         }
 
-        // Strategy 5: Topic keyword -> keyword search on subjects
-        if (queryMatchesTopicKeyword(query)) {
-          return await searchByKeyword(client, query, args, limit);
-        }
-
-        // Strategy 6: Try view match
+        // Strategy 5: Try view match (before topic keywords — H20)
         const viewResult = await searchByView(client, query, args, limit);
         if (viewResult) return viewResult;
 
-        // Strategy 7: Try customer name search
+        // Strategy 6: Try customer name search (before topic keywords — H20)
         const customerResult = await searchByCustomerName(
           client,
           query,
@@ -612,6 +648,11 @@ export function registerSmartSearchTools(
           limit,
         );
         if (customerResult) return customerResult;
+
+        // Strategy 7: Topic keyword -> keyword search on subjects
+        if (queryMatchesTopicKeyword(query)) {
+          return await searchByKeyword(client, query, args, limit);
+        }
 
         // Strategy 8: Fallback to keyword search
         return await searchByKeyword(client, query, args, limit);

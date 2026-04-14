@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, idOrZeroSchema, cursorSchema } from "./_id.js";
 
 export function registerTicketTools(server: McpServer, client: GorgiasClient) {
 
@@ -16,14 +17,14 @@ export function registerTicketTools(server: McpServer, client: GorgiasClient) {
         "updated_datetime:asc",
         "updated_datetime:desc",
       ]).optional().describe("Attribute used to order tickets. Default: 'created_datetime:desc'"),
-      cursor: z.string().optional().describe("Pagination cursor from a previous response to retrieve the next or previous page"),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response to retrieve the next or previous page"),
       limit: z.number().min(1).max(100).optional().describe("Maximum number of tickets to return per page (default: 30, max: 100)"),
-      customer_id: z.number().min(1).optional().describe("ID of a customer — returns only that customer's tickets"),
+      customer_id: idSchema.optional().describe("ID of a customer — returns only that customer's tickets"),
       external_id: z.string().optional().describe("ID of the ticket in a foreign system — returns tickets matching this external ID"),
-      view_id: z.number().min(1).optional().describe("ID of a view — returns tickets matching the filters of that view"),
-      rule_id: z.number().min(1).optional().describe("ID of a rule — returns tickets matching the filters of that rule"),
-      ticket_ids: z.array(z.number().min(1)).min(1).max(100).optional().describe("Array of specific ticket IDs to retrieve (max 100)"),
-      trashed: z.boolean().optional().describe("Whether to include trashed tickets in the response (default: false)"),
+      view_id: idSchema.optional().describe("ID of a view — returns tickets matching the filters of that view"),
+      rule_id: idSchema.optional().describe("ID of a rule — returns tickets matching the filters of that rule"),
+      ticket_ids: z.array(idSchema).min(1).max(100).optional().describe("Array of specific ticket IDs to retrieve (max 100)"),
+      trashed: z.boolean().optional().describe("Whether to include trashed tickets in the response. Per the Gorgias API spec, the default is true (trashed tickets ARE included by default). Pass false to exclude them."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -36,11 +37,12 @@ export function registerTicketTools(server: McpServer, client: GorgiasClient) {
     title: "Get Ticket",
     description: "GET /api/tickets/{id} — Retrieve a single ticket's raw API response. For a clean, LLM-optimised view with projected messages sorted chronologically, use gorgias_smart_get_ticket instead. Returns the full Ticket object including customer, messages, tags, custom fields, assignees, satisfaction survey, and metadata.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the ticket to retrieve"),
+      id: idSchema.describe("The unique ID of the ticket to retrieve"),
+      relationships: z.array(z.enum(["custom_fields"])).optional().describe("Names of related objects to include in the response. Currently the Gorgias API documents 'custom_fields'."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
-  }, safeHandler(async ({ id }) => {
-    const result = await client.get(`/api/tickets/${id}`);
+  }, safeHandler(async ({ id, ...query }) => {
+    const result = await client.get(`/api/tickets/${id}`, query);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 
@@ -76,15 +78,17 @@ Each message in the 'messages' array must include:
       status: z.enum(["open", "closed"]).optional().describe("Status of the ticket. Default: 'open'"),
       priority: z.enum(["critical", "high", "normal", "low"]).optional().describe("Priority of the ticket. Default: 'normal'"),
       customer: z.object({
-        id: z.number().nullable().optional().describe("ID of the customer"),
+        id: idSchema.nullable().optional().describe("ID of the customer"),
         email: z.string().max(320).nullable().optional().describe("Primary email of the customer (max 320 chars)"),
         name: z.string().nullable().optional().describe("Name of the customer"),
       }).nullable().optional().describe("Customer associated with the ticket"),
       assignee_user: z.object({
-        id: z.number().min(0).nullable().optional().describe("ID of the user to assign (null to unassign)"),
+        // L2: On create, use min(1) — nothing to unassign on a new ticket.
+        id: idSchema.nullable().optional().describe("ID of the user to assign (null to skip assignment)"),
       }).nullable().optional().describe("User assigned to the ticket"),
       assignee_team: z.object({
-        id: z.number().min(0).nullable().optional().describe("ID of the team to assign (null to unassign)"),
+        // L2: On create, use min(1) — nothing to unassign on a new ticket.
+        id: idSchema.nullable().optional().describe("ID of the team to assign (null to skip assignment)"),
       }).nullable().optional().describe("Team assigned to the ticket"),
       tags: z.array(z.object({
         name: z.string().min(1).max(256).describe("Name of the tag"),
@@ -93,7 +97,7 @@ Each message in the 'messages' array must include:
         }).nullable().optional().describe("Visual styling for the tag"),
       })).nullable().optional().describe("Tags associated with the ticket"),
       custom_fields: z.array(z.object({
-        id: z.number().describe("ID of the custom field definition"),
+        id: idSchema.describe("ID of the custom field definition"),
         value: z.any().describe("Value of the custom field (type depends on field's data_type: string, number, boolean, or null)"),
       })).nullable().optional().describe("Custom fields associated with the ticket"),
       external_id: z.string().max(255).nullable().optional().describe("ID of the ticket in a foreign system (max 255 chars, not used by Gorgias)"),
@@ -119,20 +123,20 @@ Each message in the 'messages' array must include:
     title: "Update Ticket",
     description: "PUT /api/tickets/{id} — Update an existing ticket. Only the fields provided will be updated; omitted fields retain their current values. NOTE: Sending 'tags' replaces ALL existing tags. To modify individual tags use the dedicated tag endpoints. Similarly, 'custom_fields' replaces all existing custom field values.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the ticket to update"),
+      id: idSchema.describe("The unique ID of the ticket to update"),
       status: z.enum(["open", "closed"]).optional().describe("Status of the ticket: 'open' or 'closed'"),
       priority: z.enum(["critical", "high", "normal", "low"]).optional().describe("Priority of the ticket: 'critical', 'high', 'normal', or 'low'"),
       subject: z.string().max(998).nullable().optional().describe("Subject line of the ticket (max 998 characters)"),
       channel: z.string().optional().describe("Channel used to initiate the conversation. Enum: 'aircall', 'api', 'chat', 'contact_form', 'email', 'facebook', 'facebook-mention', 'facebook-messenger', 'facebook-recommendations', 'help-center', 'instagram-ad-comment', 'instagram-comment', 'instagram-direct-message', 'instagram-mention', 'internal-note', 'phone', 'sms', 'twitter', 'twitter-direct-message', 'whatsapp', 'yotpo-review'"),
       via: z.string().optional().describe("How the first message was received or sent. Enum: 'aircall', 'api', 'chat', 'contact_form', 'email', 'facebook', 'facebook-mention', 'facebook-messenger', 'facebook-recommendations', 'form', 'gorgias_chat', 'help-center', 'helpdesk', 'instagram', 'instagram-ad-comment', 'instagram-comment', 'instagram-direct-message', 'instagram-mention', 'internal-note', 'offline_capture', 'phone', 'rule', 'self_service', 'shopify', 'sms', 'twilio', 'twitter', 'twitter-direct-message', 'whatsapp', 'yotpo', 'yotpo-review', 'zendesk'"),
       assignee_user: z.object({
-        id: z.number().nullable().optional().describe("ID of the user to assign. Set to null to unassign."),
+        id: idOrZeroSchema.nullable().optional().describe("ID of the user to assign. Set to null to unassign."),
       }).nullable().optional().describe("User assigned to the ticket. Send {id: null} to unassign."),
       assignee_team: z.object({
-        id: z.number().nullable().optional().describe("ID of the team to assign. Set to null to unassign."),
+        id: idOrZeroSchema.nullable().optional().describe("ID of the team to assign. Set to null to unassign."),
       }).nullable().optional().describe("Team assigned to the ticket. Send {id: null} to unassign."),
       customer: z.object({
-        id: z.number().nullable().optional().describe("ID of the customer"),
+        id: idSchema.nullable().optional().describe("ID of the customer"),
         email: z.string().max(320).nullable().optional().describe("Primary email of the customer (max 320 chars)"),
         name: z.string().nullable().optional().describe("Name of the customer"),
       }).nullable().optional().describe("Customer linked to the ticket"),
@@ -143,10 +147,10 @@ Each message in the 'messages' array must include:
         }).nullable().optional().describe("Visual decoration for the tag"),
       })).nullable().optional().describe("Tags to associate with the ticket. WARNING: This REPLACES all existing tags. Use dedicated tag endpoints to add/remove individual tags."),
       custom_fields: z.array(z.object({
-        id: z.number().describe("ID of the custom field definition"),
+        id: idSchema.describe("ID of the custom field definition"),
         value: z.any().describe("Value of the custom field (string, number, boolean, or null to clear)"),
       })).nullable().optional().describe("Custom field values. WARNING: This replaces existing custom field values."),
-      spam: z.boolean().optional().describe("Whether the ticket is considered spam"),
+      spam: z.boolean().nullable().optional().describe("Whether the ticket is considered spam"),
       from_agent: z.boolean().nullable().optional().describe("Whether the first message was sent by your company (true) or a customer (false)"),
       language: z.string().nullable().optional().describe("Language primarily used in the ticket (e.g. 'en', 'fr')"),
       external_id: z.string().max(255).nullable().optional().describe("ID of the ticket in a foreign system (max 255 chars)"),
@@ -155,7 +159,10 @@ Each message in the 'messages' array must include:
       closed_datetime: z.string().nullable().optional().describe("When the ticket was closed (ISO 8601). Setting this closes the ticket."),
       trashed_datetime: z.string().nullable().optional().describe("When the ticket was trashed (ISO 8601). Set to null to restore from trash."),
       opened_datetime: z.string().nullable().optional().describe("When the ticket was first opened (ISO 8601)"),
-      created_datetime: z.string().nullable().optional().describe("When the ticket was created — can be used to backdate (ISO 8601)"),
+      // NOTE: `created_datetime` is intentionally NOT exposed on update. The
+      // Gorgias UpdateTicket schema does not list it as a writable field — it
+      // is set at creation time and is immutable thereafter. To backdate a
+      // ticket, set `created_datetime` on `gorgias_create_ticket` instead.
       updated_datetime: z.string().nullable().optional().describe("When the ticket was last updated (ISO 8601)"),
       last_message_datetime: z.string().nullable().optional().describe("When the last message was sent (ISO 8601)"),
       last_received_message_datetime: z.string().nullable().optional().describe("When the last customer message was sent (ISO 8601)"),
@@ -171,7 +178,7 @@ Each message in the 'messages' array must include:
     title: "Delete Ticket",
     description: "DELETE /api/tickets/{id} — Permanently delete a ticket by ID. This is irreversible and also removes all associated messages, tags, and custom field values. Consider using trashed_datetime via Update Ticket for a soft-delete instead.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the ticket to permanently delete"),
+      id: idSchema.describe("The unique ID of the ticket to permanently delete"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -182,9 +189,9 @@ Each message in the 'messages' array must include:
   // --- List Ticket Tags ---
   server.registerTool("gorgias_list_ticket_tags", {
     title: "List Ticket Tags",
-    description: "GET /api/tickets/{ticket_id}/tags — List all tags currently associated with a specific ticket. Returns a direct JSON array (not paginated). Each tag includes id, name, description, decoration, usage count, uri, and timestamps.",
+    description: "GET /api/tickets/{ticket_id}/tags — List all tags currently associated with a specific ticket. Returns {data: [...]} with a tag array (not cursor-paginated). Each tag includes id, name, description, decoration, usage count, uri, and timestamps.",
     inputSchema: {
-      ticket_id: z.number().describe("The unique ID of the ticket whose tags to list"),
+      ticket_id: idSchema.describe("The unique ID of the ticket whose tags to list"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ ticket_id }) => {
@@ -197,8 +204,8 @@ Each message in the 'messages' array must include:
     title: "Add Ticket Tags",
     description: "POST /api/tickets/{ticket_id}/tags — Add one or more tags to a ticket. This is additive — existing tags are preserved. Tags can be specified by IDs, names, or both. At least one of 'ids' or 'names' must be provided. Returns 201 with empty body on success.",
     inputSchema: z.object({
-      ticket_id: z.number().describe("The unique ID of the ticket to add tags to"),
-      ids: z.array(z.number()).optional().describe("Array of tag IDs to add to the ticket"),
+      ticket_id: idSchema.describe("The unique ID of the ticket to add tags to"),
+      ids: z.array(idSchema).optional().describe("Array of tag IDs to add to the ticket"),
       names: z.array(z.string()).optional().describe("Array of tag names to add to the ticket (case-sensitive)"),
     }).refine(
       (data) => (data.ids && data.ids.length > 0) || (data.names && data.names.length > 0),
@@ -215,8 +222,8 @@ Each message in the 'messages' array must include:
     title: "Set Ticket Tags",
     description: "PUT /api/tickets/{ticket_id}/tags — Replace the complete list of tags on a ticket. This is destructive — all existing tags not included in the request are removed. To clear all tags, send an empty body {}. Tags can be specified by IDs, names, or both. Returns 202 with empty body on success.",
     inputSchema: {
-      ticket_id: z.number().describe("The unique ID of the ticket whose tags will be replaced"),
-      ids: z.array(z.number()).optional().describe("Array of tag IDs that should be set on the ticket after this operation"),
+      ticket_id: idSchema.describe("The unique ID of the ticket whose tags will be replaced"),
+      ids: z.array(idSchema).optional().describe("Array of tag IDs that should be set on the ticket after this operation"),
       names: z.array(z.string()).optional().describe("Array of tag names that should be set on the ticket after this operation (case-sensitive)"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
@@ -230,8 +237,8 @@ Each message in the 'messages' array must include:
     title: "Remove Ticket Tags",
     description: "DELETE /api/tickets/{ticket_id}/tags — Remove specific tags from a ticket. Only the specified tags are removed; other tags remain. Tags can be specified by IDs, names, or both. At least one of 'ids' or 'names' must be provided. Returns 204 with empty body on success.",
     inputSchema: z.object({
-      ticket_id: z.number().describe("The unique ID of the ticket to remove tags from"),
-      ids: z.array(z.number()).optional().describe("Array of tag IDs to remove from the ticket"),
+      ticket_id: idSchema.describe("The unique ID of the ticket to remove tags from"),
+      ids: z.array(idSchema).optional().describe("Array of tag IDs to remove from the ticket"),
       names: z.array(z.string()).optional().describe("Array of tag names to remove from the ticket (case-sensitive)"),
     }).refine(
       (data) => (data.ids && data.ids.length > 0) || (data.names && data.names.length > 0),
@@ -246,9 +253,9 @@ Each message in the 'messages' array must include:
   // --- List Ticket Custom Field Values ---
   server.registerTool("gorgias_list_ticket_fields", {
     title: "List Ticket Custom Field Values",
-    description: "GET /api/tickets/{ticket_id}/custom-fields — List all custom field values currently assigned to a specific ticket. Returns a direct JSON array. Each item has an 'id' (field value record ID, used for update/delete) and 'value'. For full field definitions (labels, types), use GET /api/custom-fields.",
+    description: "GET /api/tickets/{ticket_id}/custom-fields — List all custom field values currently assigned to a specific ticket. Returns {data: [...]} with an array of field-value objects. Each item has 'field' (nested object with 'id', 'label', 'object_type', 'definition'), 'prediction', and 'value'. Use field.id as the identifier for update/delete operations on this ticket's custom field values.",
     inputSchema: {
-      ticket_id: z.number().describe("The unique ID of the ticket whose custom field values to list"),
+      ticket_id: idSchema.describe("The unique ID of the ticket whose custom field values to list"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ ticket_id }) => {
@@ -259,11 +266,11 @@ Each message in the 'messages' array must include:
   // --- Update Single Ticket Custom Field Value ---
   server.registerTool("gorgias_update_ticket_field", {
     title: "Update Ticket Custom Field Value",
-    description: "PUT /api/tickets/{ticket_id}/custom-fields/{id} — Update the value of a single custom field on a ticket. The path 'id' is the field VALUE RECORD ID (from GET /api/tickets/{id}/custom-fields). The body 'id' is the CUSTOM FIELD DEFINITION ID (from GET /api/custom-fields). Value type must match the field's data_type: string for 'text', number for 'number', boolean for 'boolean'. Pass null to clear the value.",
+    description: "PUT /api/tickets/{ticket_id}/custom-fields/{id} — Update the value of a single custom field on a ticket. The path 'id' is the custom field definition ID (field.id from GET /api/tickets/{ticket_id}/custom-fields). Value type must match the field's data_type: string for 'text', number for 'number', boolean for 'boolean'. Pass null to clear the value.",
     inputSchema: {
-      ticket_id: z.number().describe("The unique ID of the ticket containing the custom field value to update"),
-      id: z.number().describe("The field value record ID on the ticket (obtained from GET /api/tickets/{ticket_id}/custom-fields)"),
-      definition_id: z.number().describe("The custom field DEFINITION ID (from GET /api/custom-fields). This is sent as 'id' in the request body."),
+      ticket_id: idSchema.describe("The unique ID of the ticket containing the custom field value to update"),
+      id: idSchema.describe("The custom field definition ID (field.id from GET /api/tickets/{ticket_id}/custom-fields)"),
+      definition_id: idSchema.describe("The custom field definition ID sent as 'id' in the request body. Typically the same as the path 'id'."),
       value: z.any().describe("The new value to assign. Type must match field's data_type: string (text), number (number), boolean (boolean). Pass null to clear."),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
@@ -280,9 +287,9 @@ Each message in the 'messages' array must include:
     title: "Update Ticket Custom Field Values (Bulk)",
     description: "PUT /api/tickets/{ticket_id}/custom-fields — Update multiple custom field values on a ticket in a single request. Each item in the 'fields' array requires 'id' (the CUSTOM FIELD DEFINITION ID from GET /api/custom-fields) and 'value'. Fields not included are left unchanged. Returns array of updated field value objects (each with value-record 'id' and 'value').",
     inputSchema: {
-      ticket_id: z.number().describe("The unique ID of the ticket whose custom field values are being updated"),
+      ticket_id: idSchema.describe("The unique ID of the ticket whose custom field values are being updated"),
       fields: z.array(z.object({
-        id: z.number().describe("The custom field DEFINITION ID (from GET /api/custom-fields)"),
+        id: idSchema.describe("The custom field DEFINITION ID (from GET /api/custom-fields)"),
         value: z.any().describe("The new value. Type must match field's data_type: string (text), number (number), boolean (boolean). Pass null to clear."),
       })).min(1).describe("Array of custom field updates. Each item needs 'id' (definition ID) and 'value'. The request body sent to the API is this array directly."),
     },
@@ -295,10 +302,10 @@ Each message in the 'messages' array must include:
   // --- Delete Ticket Custom Field Value ---
   server.registerTool("gorgias_delete_ticket_field", {
     title: "Delete Ticket Custom Field Value",
-    description: "DELETE /api/tickets/{ticket_id}/custom-fields/{id} — Remove a custom field value from a ticket. This removes the value assignment on the ticket — it does NOT delete the custom field definition. The path 'id' is the field VALUE RECORD ID (from GET /api/tickets/{ticket_id}/custom-fields), not the definition ID. Returns 204 No Content on success.",
+    description: "DELETE /api/tickets/{ticket_id}/custom-fields/{id} — Remove a custom field value from a ticket. This removes the value assignment on the ticket — it does NOT delete the custom field definition. The path 'id' is the custom field definition ID (field.id from GET /api/tickets/{ticket_id}/custom-fields). Returns 204 No Content on success.",
     inputSchema: {
-      ticket_id: z.number().describe("The unique ID of the ticket whose custom field value to delete"),
-      id: z.number().describe("The field value record ID on the ticket (obtained from GET /api/tickets/{ticket_id}/custom-fields)"),
+      ticket_id: idSchema.describe("The unique ID of the ticket whose custom field value to delete"),
+      id: idSchema.describe("The custom field definition ID (field.id from GET /api/tickets/{ticket_id}/custom-fields)"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ ticket_id, id }) => {

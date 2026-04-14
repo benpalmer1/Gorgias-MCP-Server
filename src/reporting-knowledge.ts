@@ -23,11 +23,12 @@ export const SCOPE_TIME_DIMENSION: Record<string, string> = {
   "messages-sent": "sentDatetime",
   "first-response-time": "firstAgentMessageDatetime",
   "human-first-response-time": "firstAgentMessageDatetime",
-  "response-time": "createdDatetime",
+  "response-time": "sentDatetime",
   "messages-per-ticket": "createdDatetime",
   "ticket-handle-time": "createdDatetime",
   "online-time": "timestamp",
-  "tags": "createdDatetime",
+  // M5: live API requires "timestamp", not "createdDatetime" (verified 2026-04-14)
+  "tags": "timestamp",
   "auto-qa": "closedDatetime",
   "messages-received": "sentDatetime",
   "automation-rate": "createdDatetime",
@@ -82,31 +83,35 @@ export const SCOPE_DEFAULT_MEASURES: Record<string, string[]> = {
 
 /** Map each statistics scope to its array of valid dimension names. */
 export const SCOPE_VALID_DIMENSIONS: Record<string, string[]> = {
-  "tickets-created": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "tickets-closed": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "tickets-open": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "tickets-replied": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "one-touch-tickets": ["agentId", "channel", "integrationId", "storeId", "teamId"],
+  // Verified against live API 2026-04-14: "teamId" is NOT a valid dimension
+  // for the reporting stats API despite appearing in older documentation.
+  "tickets-created": ["agentId", "channel", "integrationId", "storeId"],
+  "tickets-closed": ["agentId", "channel", "integrationId", "storeId"],
+  "tickets-open": ["agentId", "channel", "integrationId", "storeId"],
+  "tickets-replied": ["agentId", "channel", "integrationId", "storeId"],
+  "one-touch-tickets": ["agentId", "channel", "integrationId", "storeId"],
   "zero-touch-tickets": ["channel", "integrationId", "storeId"],
-  "satisfaction-surveys": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "resolution-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "messages-sent": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "first-response-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "human-first-response-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "response-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "messages-per-ticket": ["agentId", "channel", "integrationId", "storeId", "teamId"],
-  "ticket-handle-time": ["agentId", "channel", "integrationId", "storeId", "teamId"],
+  "satisfaction-surveys": ["agentId", "channel", "integrationId", "storeId"],
+  "resolution-time": ["agentId", "channel", "integrationId", "storeId"],
+  "messages-sent": ["agentId", "channel", "integrationId", "storeId"],
+  "first-response-time": ["agentId", "channel", "integrationId", "storeId"],
+  "human-first-response-time": ["agentId", "channel", "integrationId", "storeId"],
+  "response-time": ["agentId", "channel", "integrationId", "storeId"],
+  "messages-per-ticket": ["agentId", "channel", "integrationId", "storeId"],
+  "ticket-handle-time": ["agentId", "channel", "integrationId", "storeId"],
   "online-time": ["agentId"],
   "tags": ["tagId"],
-  "auto-qa": ["agentId", "channel", "integrationId", "storeId", "teamId", "categoryName"],
+  "auto-qa": ["agentId", "channel", "integrationId", "storeId", "categoryName"],
   "messages-received": ["channel", "integrationId", "storeId"],
   "automation-rate": ["channel", "integrationId", "storeId"],
-  "workload-tickets": ["agentId", "teamId"],
+  "workload-tickets": ["agentId"],
   "automated-interactions": ["eventType", "channel", "integrationId", "storeId"],
   "ticket-fields": ["customFieldValue"],
   "voice-calls": ["agentId", "integrationId", "phoneNumberId", "queueId"],
   "voice-agent-events": ["agentId", "integrationId"],
-  "ticket-sla": ["agentId", "channel", "integrationId", "policyId", "storeId", "teamId"],
+  // H21: dimension list verified against live API — "status" is the only
+  // grouping dimension; "slaPolicyUuid" is a filter member, not a dimension.
+  "ticket-sla": ["status"],
   "knowledge-insights": [],
   "voice-calls-summary": ["agentId", "integrationId", "phoneNumberId", "queueId"],
 };
@@ -118,11 +123,11 @@ export const SCOPE_VALID_DIMENSIONS: Record<string, string[]> = {
 /** Map LLM-friendly dimension names to their API equivalents. */
 export const DIMENSION_ALIASES: Record<string, string | null> = {
   "agent": "agentId",
-  "team": "teamId",
+  "team": null, // teamId is not a valid dimension in the Gorgias reporting API
   "tag": "tagId",
   "store": "storeId",
   "integration": "integrationId",
-  "policy": "policyId",
+  "policy": null, // policyId is not a valid dimension for any current scope
   "phone": "phoneNumberId",
   "queue": "queueId",
   "category": "categoryName",
@@ -138,6 +143,7 @@ export const DIMENSION_ALIASES: Record<string, string | null> = {
 export const BROKEN_SCOPES: Record<string, string> = {
   "automation-rate": "This scope consistently returns server errors from the Gorgias API",
   "online-time": "This scope consistently returns server errors from the Gorgias API",
+  "voice-calls": "This scope consistently returns server errors from the Gorgias API",
   "voice-agent-events": "This scope consistently returns server errors from the Gorgias API",
   "voice-calls-summary": "This scope consistently returns server errors from the Gorgias API",
 };
@@ -153,6 +159,19 @@ export const SCOPE_REQUIRED_FILTERS: Record<string, { filterMember: string; desc
     description: "The 'ticket-fields' scope requires a 'customFieldId' filter specifying which custom field to analyse",
   },
 };
+
+// ---------------------------------------------------------------------------
+// Scopes whose measures return time values in seconds
+// ---------------------------------------------------------------------------
+
+/** Scopes where the primary measures represent durations in seconds. */
+export const TIME_BASED_SCOPES = new Set([
+  "first-response-time",
+  "human-first-response-time",
+  "response-time",
+  "resolution-time",
+  "ticket-handle-time",
+]);
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -183,6 +202,23 @@ export function humaniseKey(key: string): string {
         .join(" ");
     })
     .join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Date range validation
+// ---------------------------------------------------------------------------
+
+/** Maximum number of days the Gorgias reporting API accepts in a single query. */
+export const MAX_PERIOD_DAYS = 366;
+
+/**
+ * Compute the inclusive period length in whole days between two YYYY-MM-DD dates.
+ * Same-date → 1; one-day gap → 2.
+ */
+export function periodLengthDays(startDate: string, endDate: string): number {
+  const startMs = Date.parse(`${startDate}T00:00:00Z`);
+  const endMs = Date.parse(`${endDate}T00:00:00Z`);
+  return Math.floor((endMs - startMs) / 86_400_000) + 1;
 }
 
 /** Add 1 day to an ISO date string for exclusive end-date adjustment. */

@@ -36,6 +36,7 @@ export const AGENT_WRITE_TOOLS: ReadonlySet<string> = new Set([
 
   // Customer field values (agents often update these during triage)
   "gorgias_update_customer_field_value",
+  "gorgias_update_customer_fields",
 ]);
 
 /**
@@ -57,18 +58,62 @@ export function isToolAllowed(
 }
 
 /**
+ * Statistics for tools registered (vs filtered out) by withAccessFilter.
+ * The stats live alongside the underlying McpServer in a module-level
+ * WeakMap so they remain readable after `withAccessFilter` returns,
+ * regardless of whether the consumer has the proxy or the raw server.
+ */
+export interface AccessFilterStats {
+  registeredCount: number;
+  skippedCount: number;
+}
+
+const accessFilterStatsByServer = new WeakMap<McpServer, AccessFilterStats>();
+
+/**
+ * Read the access-filter statistics for a server returned by
+ * `createGorgiasServer` (or the underlying server passed to
+ * `withAccessFilter`). Returns `undefined` if the server has no
+ * recorded stats yet.
+ */
+export function getAccessFilterStats(server: McpServer): AccessFilterStats | undefined {
+  return accessFilterStatsByServer.get(server);
+}
+
+/**
  * Returns a proxied McpServer that filters registerTool calls based on
  * the access level. Tools that don't pass the check are silently skipped —
  * they never exist from the LLM's perspective.
  *
  * The proxy only intercepts `registerTool`; all other server methods
- * (connect, close, etc.) pass through unchanged.
+ * (connect, close, etc.) pass through unchanged. After registration the
+ * caller may safely use either the proxy or the underlying raw server;
+ * tool registrations are mutated onto the raw server in either case.
+ *
+ * Stats (registeredCount + skippedCount) are also stored against the
+ * raw server in a module-level WeakMap so callers that hold only the
+ * raw server (e.g. createGorgiasServer's return value) can still read
+ * them via `getAccessFilterStats`.
  */
 export function withAccessFilter(server: McpServer, level: AccessLevel): McpServer {
-  if (level === "admin") return server;
+  // Initialise stats and stash against the raw server for both branches
+  // (admin and filtered) so the same `getAccessFilterStats` API works
+  // uniformly. Admin mode wraps registerTool too — the wrapper just
+  // counts every registration without filtering — so the startup log
+  // can show "N tools registered" in admin mode as well.
+  const stats: AccessFilterStats = { registeredCount: 0, skippedCount: 0 };
+  accessFilterStatsByServer.set(server, stats);
 
-  let registeredCount = 0;
-  let skippedCount = 0;
+  if (level === "admin") {
+    const originalRegisterTool = server.registerTool.bind(server);
+    (server as unknown as { registerTool: unknown }).registerTool = (
+      ...args: unknown[]
+    ) => {
+      stats.registeredCount++;
+      return (originalRegisterTool as (...a: unknown[]) => unknown)(...args);
+    };
+    return server;
+  }
 
   const proxy = new Proxy(server, {
     get(target, prop, receiver) {
@@ -81,16 +126,12 @@ export function withAccessFilter(server: McpServer, level: AccessLevel): McpServ
           const annotations = (config.annotations ?? {}) as { readOnlyHint?: boolean };
 
           if (isToolAllowed(name, annotations, level)) {
-            registeredCount++;
+            stats.registeredCount++;
             return (target.registerTool as (...args: unknown[]) => unknown).call(target, name, config, handler);
           }
 
-          skippedCount++;
+          stats.skippedCount++;
         };
-      }
-
-      if (prop === "_accessFilterStats") {
-        return { registeredCount, skippedCount };
       }
 
       return Reflect.get(target, prop, receiver);

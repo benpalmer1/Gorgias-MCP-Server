@@ -2,28 +2,48 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, cursorSchema } from "./_id.js";
 
 export function registerEventTools(server: McpServer, client: GorgiasClient) {
 
   // --- List Events ---
   server.registerTool("gorgias_list_events", {
     title: "List Events",
-    description: "GET /api/events — List events, paginated and ordered by creation date (most recent first). Supports filtering by object, user, and event type.",
+    description: "GET /api/events — List events, cursor-paginated and ordered by creation date (most recent first). Supports filtering by object, user, event type, and creation datetime range.",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor. Pass the value of next_cursor from a previous response to retrieve the next page"),
-      limit: z.number().optional().describe("Maximum number of events to return per page"),
-      order_by: z.string().optional().describe("Field and direction to sort by. Acceptable values: 'created_datetime', 'created_datetime:asc', 'created_datetime:desc' (default: 'created_datetime:desc')"),
-      object_id: z.number().optional().describe("Filter events by the ID of the associated object (e.g., ticket ID, customer ID)"),
+      cursor: cursorSchema.optional().describe("Pagination cursor. Pass the value of next_cursor from a previous response to retrieve the next page"),
+      limit: z.number().int().min(1).max(100).optional().describe("Maximum number of events to return per page (1-100, default 30)"),
+      order_by: z.enum([
+        "created_datetime:asc",
+        "created_datetime:desc",
+      ]).optional().describe("Sort order (default: 'created_datetime:desc')"),
+      object_id: idSchema.optional().describe("Filter events by the ID of the associated object (e.g., ticket ID, customer ID)"),
       object_type: z.enum([
         "Account", "Macro", "Tag", "Customer", "Team", "View",
         "Widget", "User", "TicketMessage", "Ticket", "Rule", "Integration",
-      ]).optional().describe("Filter events by the type of the associated object"),
-      user_ids: z.number().optional().describe("Filter events by the ID of the user who triggered them"),
-      types: z.string().optional().describe("Filter events by event type. Common values: 'ticket-created', 'ticket-updated', 'ticket-deleted', 'ticket-message-created', 'ticket-message-updated', 'customer-created', 'customer-updated', 'user-created', 'user-updated', 'tag-created', 'tag-updated', 'macro-created', 'macro-updated', 'rule-created', 'rule-updated', 'integration-created', 'integration-updated'. There are 100+ possible values; see the Gorgias Event Object documentation for the full list."),
+        "SatisfactionSurvey",
+      ]).optional().describe("Filter events by the type of the associated object. The API requires object_id when object_type is provided."),
+      user_ids: z.array(idSchema).optional().describe("Filter events by the IDs of the users who triggered them. The Gorgias API expects an array of integers."),
+      types: z.array(z.string()).optional().describe("Filter events by event type names. The Gorgias API expects an array of strings. Common values include 'ticket-created', 'ticket-updated', 'ticket-deleted', 'ticket-message-created', 'customer-created', etc. — there are 100+ possible values; see the Gorgias Event Object documentation for the full list."),
+      created_datetime: z.object({
+        gt: z.string().optional().describe("Strictly after this ISO 8601 datetime."),
+        gte: z.string().optional().describe("On or after this ISO 8601 datetime."),
+        lt: z.string().optional().describe("Strictly before this ISO 8601 datetime."),
+        lte: z.string().optional().describe("On or before this ISO 8601 datetime."),
+      }).optional().describe("Filter events by creation datetime. Object of comparator -> ISO 8601 datetime, e.g. { gte: '2026-01-01T00:00:00Z', lt: '2026-02-01T00:00:00Z' }."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
-    const result = await client.get("/api/events", args);
+    // Flatten created_datetime nested object into bracket-notation query params
+    // e.g. { gte: "2026-01-01" } → created_datetime[gte]=2026-01-01
+    const { created_datetime, ...rest } = args;
+    const query: Record<string, unknown> = { ...rest };
+    if (created_datetime) {
+      for (const [op, val] of Object.entries(created_datetime)) {
+        if (val !== undefined) query[`created_datetime[${op}]`] = val;
+      }
+    }
+    const result = await client.get("/api/events", query);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 
@@ -32,7 +52,7 @@ export function registerEventTools(server: McpServer, client: GorgiasClient) {
     title: "Get Event",
     description: "GET /api/events/{id} — Retrieve a single event by its unique ID. Events are read-only records generated automatically by the Gorgias system.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the event to retrieve"),
+      id: idSchema.describe("The unique ID of the event to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {

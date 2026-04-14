@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, idOrZeroSchema, cursorSchema } from "./_id.js";
 
 export function registerViewTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,7 +11,7 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
     title: "List Views",
     description: "GET /api/views — List all views with cursor-based pagination. Template variables in filters are resolved to the authenticated user's values.",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor from a previous response (meta.next_cursor or meta.prev_cursor)"),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response (meta.next_cursor or meta.prev_cursor)"),
       limit: z.number().min(1).max(100).optional().describe("Maximum number of views to return per page (default: 30, max: 100)"),
       order_by: z.enum(["created_datetime:asc", "created_datetime:desc"]).optional().describe("Ordering of views in the response (default: 'created_datetime:desc')"),
     },
@@ -25,7 +26,7 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
     title: "Get View",
     description: "GET /api/views/{id} — Retrieve a single view by its unique ID.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the view to retrieve"),
+      id: idSchema.describe("The unique ID of the view to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -54,8 +55,9 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
       order_by: z.string().optional().describe("Ticket attribute used to sort view items (default: 'updated_datetime')"),
       order_dir: z.enum(["asc", "desc"]).optional().describe("Sort direction for view items (default: 'desc')"),
       search: z.string().nullable().optional().describe("Free-text search query to filter matching items"),
-      shared_with_teams: z.array(z.number()).max(100).optional().describe("IDs of teams to share the view with. Used when visibility is 'shared'. Max 100 items."),
-      shared_with_users: z.array(z.number()).max(100).optional().describe("IDs of users to share the view with. Used when visibility is 'shared' or 'private'. Max 100 items."),
+      section_id: idSchema.optional().describe("ID of the view section to place this view in"),
+      shared_with_teams: z.array(idSchema).max(100).optional().describe("IDs of teams to share the view with. Used when visibility is 'shared'. Max 100 items."),
+      shared_with_users: z.array(idSchema).max(100).optional().describe("IDs of users to share the view with. Used when visibility is 'shared' or 'private'. Max 100 items."),
     },
     annotations: { readOnlyHint: false, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -68,13 +70,13 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
     title: "Update View",
     description: "PUT /api/views/{id} — Update an existing view by ID. Only include fields to modify.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the view to update"),
+      id: idSchema.describe("The unique ID of the view to update"),
       name: z.string().optional().describe("Display name of the view"),
       type: z.enum(["ticket-list"]).optional().describe("Type of objects the view applies to. Only 'ticket-list' is supported."),
       visibility: z.enum(["public", "shared", "private"]).optional().describe("Access level: 'public' (all users), 'shared' (specific users/teams plus admins), 'private' (single user)"),
       decoration: z.object({
         emoji: z.string().nullable().optional().describe("Emoji character displayed before the view name in the UI"),
-      }).optional().describe("Display configuration for the view"),
+      }).nullable().optional().describe("Display configuration for the view. Pass null to remove decoration."),
       fields: z.array(z.enum([
         "id", "details", "tags", "customer", "last_message", "name", "email",
         "created", "updated", "assignee", "assignee_team", "channel", "closed",
@@ -84,8 +86,10 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
       filters: z.string().optional().describe("JavaScript-style filter expression. Supports template variables e.g. eq(ticket.assignee_user.id, '{{current_user.id}}') && eq(ticket.status, 'open')"),
       order_by: z.string().optional().describe("Ticket attribute used to sort view items"),
       order_dir: z.enum(["asc", "desc"]).optional().describe("Sort direction for view items"),
-      shared_with_teams: z.array(z.number()).max(100).optional().describe("IDs of teams to share the view with. Max 100 items."),
-      shared_with_users: z.array(z.number()).max(100).optional().describe("IDs of users to share the view with. Max 100 items."),
+      search: z.string().nullable().optional().describe("Free-text search query to filter matching items. Pass null to clear."),
+      section_id: idSchema.optional().describe("ID of the view section to move this view into"),
+      shared_with_teams: z.array(idSchema).max(100).optional().describe("IDs of teams to share the view with. Max 100 items."),
+      shared_with_users: z.array(idSchema).max(100).optional().describe("IDs of users to share the view with. Max 100 items."),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id, ...body }) => {
@@ -98,7 +102,7 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
     title: "Delete View",
     description: "DELETE /api/views/{id} — Permanently delete a view by ID. System views (Trash, Spam) cannot be deleted.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the view to delete"),
+      id: idSchema.describe("The unique ID of the view to delete"),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -111,10 +115,10 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
     title: "List View Items",
     description: "GET /api/views/{view_id}/items — List the tickets belonging to a view with cursor-based pagination.",
     inputSchema: {
-      view_id: z.number().describe("The ID of the view to list items from"),
-      cursor: z.string().optional().describe("Pagination cursor indicating current position in the list. Omit for the first page."),
+      view_id: idSchema.describe("The ID of the view to list items from"),
+      cursor: cursorSchema.optional().describe("Pagination cursor indicating current position in the list. Omit for the first page."),
       direction: z.enum(["prev", "next"]).nullable().optional().describe("Pagination direction: 'next' returns items after the cursor, 'prev' returns items before"),
-      ignored_item: z.number().optional().describe("ID of a ticket to exclude from results (useful when items shift between pages due to real-time updates)"),
+      ignored_item: idSchema.optional().describe("ID of a ticket to exclude from results (useful when items shift between pages due to real-time updates)"),
       limit: z.number().min(1).max(100).optional().describe("Maximum number of items to return per page (default: 30, max: 100)"),
       order_by: z.enum([
         "created_datetime:asc", "created_datetime:desc",
@@ -137,10 +141,10 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
     title: "Search View Items",
     description: "PUT /api/views/{view_id}/items — Search tickets using inline view configuration. Pass view_id=0 to query dynamically without referencing a saved view.",
     inputSchema: {
-      view_id: z.number().describe("The ID of the view. Use 0 to dynamically query tickets without referencing a saved view."),
-      cursor: z.string().optional().describe("Pagination cursor indicating current position. Omit for the first page."),
+      view_id: idOrZeroSchema.describe("The ID of the view. Use 0 to dynamically query tickets without referencing a saved view."),
+      cursor: cursorSchema.optional().describe("Pagination cursor indicating current position. Omit for the first page."),
       direction: z.enum(["prev", "next"]).nullable().optional().describe("Pagination direction: 'next' returns items after the cursor, 'prev' returns items before"),
-      ignored_item: z.number().optional().describe("ID of a ticket to exclude from results"),
+      ignored_item: idSchema.optional().describe("ID of a ticket to exclude from results"),
       limit: z.number().min(1).max(100).optional().describe("Maximum number of items to return per page (default: 30, max: 100)"),
       order_by: z.enum([
         "created_datetime:asc", "created_datetime:desc",
