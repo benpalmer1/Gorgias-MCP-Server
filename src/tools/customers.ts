@@ -83,7 +83,7 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
       email: z.string().email().nullable().optional().describe("Primary email address of the customer."),
       external_id: z.string().nullable().optional().describe("ID of the customer in a foreign system (Stripe, Aircall, etc.). Not used by Gorgias."),
       language: z.string().nullable().optional().describe("The customer's preferred language (ISO 639-1 two-letter code, e.g. 'fr')."),
-      timezone: z.string().optional().describe("The customer's preferred timezone (IANA timezone name, e.g. 'America/New_York'). Default: 'UTC'."),
+      timezone: z.string().nullable().optional().describe("The customer's preferred timezone (IANA timezone name, e.g. 'America/New_York'). Pass null to clear. Default on create: 'UTC'."),
       channels: z.array(z.object({
         address: z.string().describe("Address of the customer channel (email, phone number, Facebook user ID, etc.)."),
         preferred: z.boolean().describe("Whether this is the preferred (primary) channel to contact this customer."),

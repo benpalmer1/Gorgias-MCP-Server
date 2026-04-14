@@ -58,9 +58,12 @@ export function registerSatisfactionSurveyTools(server: McpServer, client: Gorgi
   // --- Update Satisfaction Survey ---
   server.registerTool("gorgias_update_satisfaction_survey", {
     title: "Update Satisfaction Survey",
-    description: "PUT /api/satisfaction-surveys/{id} — Update an existing satisfaction survey by ID. This is a full-replacement PUT; include all fields you wish to retain.",
+    description: "PUT /api/satisfaction-surveys/{id} — Update an existing satisfaction survey by ID. This is a full-replacement PUT: customer_id and ticket_id must be re-sent to preserve the survey's linkage. Read the survey first via gorgias_get_satisfaction_survey to obtain the IDs.",
     inputSchema: {
       id: idSchema.describe("The unique ID of the satisfaction survey to update"),
+      customer_id: idSchema.describe("The ID of the customer who filled the survey. Required: PUT is a full-replacement operation."),
+      ticket_id: idSchema.describe("The ID of the ticket the survey is associated with. Required: PUT is a full-replacement operation."),
+      created_datetime: z.string().nullable().optional().describe("ISO 8601 datetime the survey was created. Include to preserve the original creation timestamp through a full-replacement PUT."),
       body_text: z.string().max(1000).nullable().optional().describe("The comment sent by the customer (max 1000 characters). Set to null to clear"),
       meta: z.record(z.string(), z.unknown()).nullable().optional().describe("Custom key-value data for the survey. Set to null to clear"),
       score: z.number().int().min(1).max(5).nullable().optional().describe("Satisfaction score, integer 1-5 (1 = worst, 5 = best). The Gorgias API accepts any integer in the inclusive range."),

@@ -83,10 +83,12 @@ Each message in the 'messages' array must include:
         name: z.string().nullable().optional().describe("Name of the customer"),
       }).nullable().optional().describe("Customer associated with the ticket"),
       assignee_user: z.object({
-        id: idOrZeroSchema.nullable().optional().describe("ID of the user to assign (null to unassign)"),
+        // L2: On create, use min(1) — nothing to unassign on a new ticket.
+        id: idSchema.nullable().optional().describe("ID of the user to assign (null to skip assignment)"),
       }).nullable().optional().describe("User assigned to the ticket"),
       assignee_team: z.object({
-        id: idOrZeroSchema.nullable().optional().describe("ID of the team to assign (null to unassign)"),
+        // L2: On create, use min(1) — nothing to unassign on a new ticket.
+        id: idSchema.nullable().optional().describe("ID of the team to assign (null to skip assignment)"),
       }).nullable().optional().describe("Team assigned to the ticket"),
       tags: z.array(z.object({
         name: z.string().min(1).max(256).describe("Name of the tag"),

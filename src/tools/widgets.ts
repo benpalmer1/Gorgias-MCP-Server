@@ -42,7 +42,7 @@ export function registerWidgetTools(server: McpServer, client: GorgiasClient) {
     description: "POST /api/widgets — Create a new widget to display customized data from integrations in the Gorgias ticket or customer sidebar.",
     inputSchema: {
       template: z.object({
-        type: z.string().describe("Must be 'wrapper' at the root level"),
+        type: z.literal("wrapper").describe("Must be 'wrapper' at the root level"),
         widgets: z.array(z.object({
           path: z.string().describe("Dot-notation path to the data field from the integration response"),
           type: z.string().describe("Component type: 'card', 'text', etc."),
@@ -75,7 +75,7 @@ export function registerWidgetTools(server: McpServer, client: GorgiasClient) {
       app_id: z.string().nullable().optional().describe("ID of the 3rd party app. Used for type 'customer_external_data' widgets"),
       order: z.number().min(0).optional().describe("Order of precedence; widgets with lower order appear first (default: 0)"),
       template: z.object({
-        type: z.string().describe("Must be 'wrapper' at the root level"),
+        type: z.literal("wrapper").describe("Must be 'wrapper' at the root level"),
         widgets: z.array(z.object({
           path: z.string().describe("Dot-notation path to the data field from the integration response"),
           type: z.string().describe("Component type: 'card', 'text', etc."),

@@ -14,6 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **M3: `gorgias_smart_stats` 366-day pre-flight validation.** Date ranges exceeding 366 days are now rejected client-side with an actionable error before the API call is made.
 - **C3: `gorgias_smart_get_ticket` message auto-pagination.** The tool previously fetched only the first page of messages (30 by default, 100 max per page), silently dropping all subsequent messages on long-running tickets. Now auto-paginates up to `max_messages` (default 1000, hard cap 5000). Truncated conversations return `truncated: true` with a clear hint. The `fetchAllPages` helper in `cache.ts` is now exported for reuse.
 
+### Fixed — schema correctness, write paths (H14, H16, widget, M26, L2)
+
+- **H14: Integration update partial-update support.** `gorgias_update_integration` now accepts partial http patches (only `url` required inside http block). `type` tightened to `z.literal("http")`, content types to documented enums, `form` made nullable.
+- **H16: Satisfaction survey required linkage IDs.** `gorgias_update_satisfaction_survey` now requires `customer_id` and `ticket_id` (PUT is full-replacement). Added optional `created_datetime` for round-trip preservation.
+- **Widget `template.type` literal.** Both create and update reject non-`"wrapper"` root template types at the schema layer.
+- **M26: `update_customer.timezone` nullable.** Can now pass `null` to clear the customer's timezone.
+- **L2: `create_ticket` assignee ID min.** Assignee IDs on create now require min(1) since there's nothing to unassign on a new ticket.
+
+### Fixed — schema correctness, read/list paths (H20, M23, order_by enums)
+
+- **H20: `smart_search` strategy reorder + view type.** Added `search_type: "view"` to explicitly search by view name. Auto-detection now tries view and customer-name matches before topic keywords, fixing false keyword hits for views named "Urgent" or customers named "Refund Department".
+- **H20/H11b: Client filter warning.** `applyClientFilters` now returns a structured `FilterResult` with `preFilterCount`/`postFilterCount`/`droppedCount`. When rows are dropped by client-side filters and the API window was exhausted, the `_hint` warns that more matching tickets may exist.
+- **M23: User language enum.** `language` on create/update constrained to `["fr", "en"]` per Gorgias API docs.
+- **order_by enum corrections.** `gorgias_list_tags`, `gorgias_list_rules`, `gorgias_list_integrations` now constrain `order_by` to documented enum values. Integration `type` filter constrained to `["http"]`.
+
 ### Fixed — polish (L1, L8)
 
 - **L1: `search()` throws on unexpected shapes.** The `search()` method on `GorgiasClient` now throws `GorgiasApiError` when the response is neither a raw array nor a `{data: [...]}` wrapper, instead of silently returning `[]`. This catches schema drift and transient error pages.
