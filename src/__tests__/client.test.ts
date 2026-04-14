@@ -384,3 +384,91 @@ describe("search() shape normalisation", () => {
     expect(result).toEqual([{ id: 3 }]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// B4/H18 — SSRF hostname allowlist
+// ---------------------------------------------------------------------------
+
+function buildClientDomain(domain: string): GorgiasClient {
+  return new GorgiasClient({
+    domain,
+    email: "test@example.invalid",
+    apiKey: "fake-key-for-testing",
+  });
+}
+
+function getBaseUrl(domain: string): string {
+  const client = buildClientDomain(domain);
+  return (client as unknown as { baseUrl: string }).baseUrl;
+}
+
+describe("H18: buildBaseUrl SSRF allowlist", () => {
+  it("rejects non-gorgias https host", () => {
+    expect(() => buildClientDomain("https://evil.example")).toThrow(/allowlist/i);
+  });
+
+  it("rejects raw IPv4 literal", () => {
+    expect(() => buildClientDomain("https://10.0.0.1")).toThrow();
+  });
+
+  it("rejects loopback IPv4 with port", () => {
+    expect(() => buildClientDomain("https://127.0.0.1:8080")).toThrow();
+  });
+
+  it("rejects confusable trailing-label (evil.gorgias.com.attacker.example)", () => {
+    expect(() => buildClientDomain("https://evil.gorgias.com.attacker.example")).toThrow(/allowlist/i);
+  });
+
+  it("rejects bare gorgias.com.evil", () => {
+    expect(() => buildClientDomain("https://gorgias.com.attacker.example")).toThrow(/allowlist/i);
+  });
+
+  it("accepts subdomain short form", () => {
+    expect(getBaseUrl("mycompany")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("accepts full hostname", () => {
+    expect(getBaseUrl("mycompany.gorgias.com")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("accepts full https URL", () => {
+    expect(getBaseUrl("https://mycompany.gorgias.com")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("accepts https URL with /api suffix", () => {
+    expect(getBaseUrl("https://mycompany.gorgias.com/api")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("rejects empty string", () => {
+    expect(() => buildClientDomain("")).toThrow();
+  });
+
+  it("rejects whitespace-only", () => {
+    expect(() => buildClientDomain("   ")).toThrow(/empty/i);
+  });
+
+  it("rejects internal whitespace", () => {
+    expect(() => buildClientDomain("my company")).toThrow(/whitespace/i);
+  });
+
+  it("rejects trailing dot", () => {
+    expect(() => buildClientDomain("mycompany.gorgias.com.")).toThrow(/trailing dot/i);
+  });
+
+  it("preserves http:// rejection", () => {
+    expect(() => buildClientDomain("http://mycompany.gorgias.com")).toThrow(/insecure/i);
+  });
+
+  it("GorgiasClient ctor surfaces allowlist error", () => {
+    expect(() => new GorgiasClient({
+      domain: "https://evil.example",
+      email: "a@b.invalid",
+      apiKey: "key",
+    })).toThrow(/allowlist/i);
+  });
+
+  it("case-insensitive host match", () => {
+    expect(() => buildClientDomain("https://MyCompany.GORGIAS.COM")).not.toThrow();
+    expect(getBaseUrl("https://MyCompany.GORGIAS.COM")).toBe("https://mycompany.gorgias.com");
+  });
+});

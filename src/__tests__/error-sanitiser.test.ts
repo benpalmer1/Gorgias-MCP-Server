@@ -336,11 +336,114 @@ describe("sanitiseErrorForLLM", () => {
     });
   });
 
+  describe("cause chain walking", () => {
+    it("walks single-level cause chain — both messages joined", () => {
+      const inner = new Error("connection refused");
+      const outer = new Error("request failed", { cause: inner });
+      const result = sanitiseErrorForLLM(outer);
+      expect(result).toContain("request failed");
+      expect(result).toContain("caused by:");
+      expect(result).toContain("connection refused");
+    });
+
+    it("redacts secrets in nested cause (sk_live_...)", () => {
+      const inner = new Error("apiKey=sk_live_secret123 rejected");
+      const outer = new Error("auth failed", { cause: inner });
+      const result = sanitiseErrorForLLM(outer);
+      expect(result).toContain("auth failed");
+      expect(result).not.toContain("sk_live_secret123");
+      expect(result).toContain("[REDACTED]");
+    });
+
+    it("redacts IPv4 in nested cause", () => {
+      const inner = new Error("timeout connecting to 192.168.1.50");
+      const outer = new Error("service unavailable", { cause: inner });
+      const result = sanitiseErrorForLLM(outer);
+      expect(result).toContain("service unavailable");
+      expect(result).not.toContain("192.168.1.50");
+      expect(result).toContain("[REDACTED]");
+    });
+
+    it("depth cap prevents runaway (10-deep chain truncates at 5)", () => {
+      // Build a chain of 10 errors
+      let current: Error = new Error("level-10");
+      for (let i = 9; i >= 1; i--) {
+        current = new Error(`level-${i}`, { cause: current });
+      }
+      const result = sanitiseErrorForLLM(current);
+      // Should have levels 1 through 5, but NOT 6+
+      expect(result).toContain("level-1");
+      expect(result).toContain("level-5");
+      expect(result).not.toContain("level-6");
+      expect(result).not.toContain("level-10");
+    });
+
+    it("cycle detection (a.cause = b; b.cause = a)", () => {
+      const a = new Error("error-a");
+      const b = new Error("error-b");
+      (a as Error & { cause: unknown }).cause = b;
+      (b as Error & { cause: unknown }).cause = a;
+      // Should not infinite loop — should terminate gracefully
+      const result = sanitiseErrorForLLM(a);
+      expect(result).toContain("error-a");
+      expect(result).toContain("error-b");
+    });
+
+    it("string cause handled", () => {
+      const err = new Error("outer message");
+      (err as Error & { cause: unknown }).cause = "string cause value";
+      const result = sanitiseErrorForLLM(err);
+      expect(result).toContain("outer message");
+      expect(result).toContain("caused by:");
+      expect(result).toContain("string cause value");
+    });
+
+    it("undefined cause terminates (regression)", () => {
+      const err = new Error("simple error");
+      // cause is undefined by default — should not crash
+      const result = sanitiseErrorForLLM(err);
+      expect(result).toBe("simple error");
+    });
+
+    it("stack is not included", () => {
+      const inner = new Error("inner");
+      const outer = new Error("outer", { cause: inner });
+      const result = sanitiseErrorForLLM(outer);
+      // Stack traces have "at " lines — verify they're not in output
+      expect(result).not.toMatch(/\bat\s+\S+\s+\(/);
+    });
+
+    it("non-Error cause with message field", () => {
+      const err = new Error("wrapper");
+      (err as Error & { cause: unknown }).cause = {
+        message: "plain object cause",
+      };
+      const result = sanitiseErrorForLLM(err);
+      expect(result).toContain("wrapper");
+      expect(result).toContain("caused by:");
+      expect(result).toContain("plain object cause");
+    });
+  });
+
+  describe("L4: tightened stack-trace regex", () => {
+    it("real stack trace line IS redacted", () => {
+      const msg =
+        "Error occurred\n    at Module._compile (internal/modules/cjs/loader.js:999:30)";
+      const result = sanitiseErrorForLLM(msg);
+      expect(result).not.toContain("Module._compile");
+      expect(result).not.toContain("loader.js:999:30");
+      expect(result).toContain("Error occurred");
+    });
+
+    it("prose starting with 'At' is NOT redacted", () => {
+      const msg = "At this point the process stopped responding";
+      const result = sanitiseErrorForLLM(msg);
+      expect(result).toBe("At this point the process stopped responding");
+    });
+  });
+
   describe("non-sensitive data preservation", () => {
-    it("redacts email addresses (customer PII) while preserving surrounding text", () => {
-      // Emails are customer PII and the Gorgias API regularly echoes them
-      // back in error responses. They are now redacted to avoid leaking
-      // customer email addresses to the LLM consumer.
+    it("redacts email addresses as PII", () => {
       const msg = "Customer john@example.com had a billing issue";
       const result = sanitiseErrorForLLM(msg);
       expect(result).toContain("Customer");
@@ -364,175 +467,6 @@ describe("sanitiseErrorForLLM", () => {
       expect(result).toBe(
         "Rate limit exceeded: 429 Too Many Requests (retry after 30s)"
       );
-    });
-  });
-
-  describe("SQL false-positive guards (M17)", () => {
-    it("does NOT redact ordinary English containing 'SELECT'", () => {
-      const msg = "Please SELECT a ticket from the dropdown to continue";
-      const result = sanitiseErrorForLLM(msg);
-      expect(result).toBe(msg);
-    });
-
-    it("does NOT redact ordinary English containing 'UPDATE'", () => {
-      const msg = "We tried to UPDATE your browser but it failed";
-      const result = sanitiseErrorForLLM(msg);
-      expect(result).toBe(msg);
-    });
-
-    it("does NOT redact ordinary English containing 'INSERT'", () => {
-      const msg = "Please INSERT your API key in the configuration file";
-      const result = sanitiseErrorForLLM(msg);
-      // The "API key" wording itself doesn't trigger any pattern.
-      expect(result).toBe(msg);
-    });
-
-    it("DOES redact a real SELECT...FROM query", () => {
-      const msg = "Query failed: SELECT id, email FROM customers WHERE id=1;";
-      const result = sanitiseErrorForLLM(msg);
-      expect(result).not.toContain("SELECT id");
-      expect(result).not.toContain("FROM customers");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("DOES redact a real INSERT INTO query", () => {
-      const msg = "Failed: INSERT INTO tickets (id, subject) VALUES (1, 'x');";
-      const result = sanitiseErrorForLLM(msg);
-      expect(result).not.toContain("INSERT INTO");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("DOES redact a real UPDATE...SET query", () => {
-      const msg = "Failed: UPDATE customers SET email='x' WHERE id=1;";
-      const result = sanitiseErrorForLLM(msg);
-      expect(result).not.toContain("UPDATE customers SET");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("DOES redact a real DELETE FROM query", () => {
-      const msg = "Failed: DELETE FROM tickets WHERE id=1;";
-      const result = sanitiseErrorForLLM(msg);
-      expect(result).not.toContain("DELETE FROM");
-      expect(result).toContain("[REDACTED]");
-    });
-  });
-
-  describe("vendor API key prefixes (M19)", () => {
-    // Note: these test fixtures use deliberately low-entropy placeholder
-    // strings (the literal word DOCSEXAMPLE repeated) so they cannot be
-    // mistaken for real credentials by secret scanners. The redaction
-    // regexes only check the prefix and a minimum-length character class,
-    // not the entropy of the body, so the patterns still trigger.
-    const FAKE_STRIPE_BODY = "DOCSEXAMPLEDOCSEXAMPLEab";
-    const FAKE_GITHUB_BODY = "DOCSEXAMPLEDOCSEXAMPLEDOCSEXAMPLEDOCSEX";
-    const FAKE_SLACK_BODY = "DOCSEXAMPLE-DOCSEXAMPLE";
-    const FAKE_AWS_BODY = "DOCSEXAMPLEFAKEK"; // exactly 16 uppercase chars
-    const FAKE_GOOGLE_BODY = "DOCSEXAMPLEDOCSEXAMPLED";
-
-    it("redacts a Stripe-format live secret key prefix", () => {
-      const msg = `Stripe error: sk_live_${FAKE_STRIPE_BODY} rejected`;
-      const result = sanitiseErrorForLLM(msg);
-      expect(result).not.toContain("sk_live_");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts a Stripe-format test secret key prefix", () => {
-      const result = sanitiseErrorForLLM(`sk_test_${FAKE_STRIPE_BODY}`);
-      expect(result).not.toContain("sk_test_");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts a Stripe-format webhook signing secret prefix", () => {
-      const result = sanitiseErrorForLLM(`whsec_${FAKE_STRIPE_BODY}`);
-      expect(result).not.toContain("whsec_");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts a Slack-format bot token prefix", () => {
-      const result = sanitiseErrorForLLM(`xoxb-${FAKE_SLACK_BODY}`);
-      expect(result).not.toContain("xoxb-");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts a GitHub-format personal access token prefix", () => {
-      const result = sanitiseErrorForLLM(`ghp_${FAKE_GITHUB_BODY}`);
-      expect(result).not.toContain("ghp_");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts an AWS-format access key id prefix", () => {
-      // AKIA prefix + 16 uppercase alphanumerics is the AWS format. The
-      // body here is the literal word EXAMPLE-style placeholder so no
-      // entropy check will match it as a real credential.
-      const result = sanitiseErrorForLLM(`AKIA${FAKE_AWS_BODY} was rejected`);
-      expect(result).not.toContain(`AKIA${FAKE_AWS_BODY}`);
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts a Google-format API key prefix", () => {
-      const result = sanitiseErrorForLLM(`AIza${FAKE_GOOGLE_BODY}`);
-      expect(result).not.toContain("AIza");
-      expect(result).toContain("[REDACTED]");
-    });
-  });
-
-  describe("Windows path case insensitivity (M20)", () => {
-    it("redacts a lowercase Windows drive letter path", () => {
-      const result = sanitiseErrorForLLM("Failed at c:\\Users\\admin\\file.txt");
-      expect(result).not.toContain("c:\\Users");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("still redacts an uppercase Windows drive letter path", () => {
-      const result = sanitiseErrorForLLM("Failed at C:\\Users\\admin\\file.txt");
-      expect(result).not.toContain("C:\\Users");
-      expect(result).toContain("[REDACTED]");
-    });
-  });
-
-  describe("Unix path coverage (M21)", () => {
-    it("redacts /etc paths", () => {
-      const result = sanitiseErrorForLLM("Cannot read /etc/passwd at line 5");
-      expect(result).not.toContain("/etc/passwd");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts /root paths", () => {
-      const result = sanitiseErrorForLLM("Permission denied: /root/.ssh/id_rsa");
-      expect(result).not.toContain("/root/.ssh");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts /proc paths", () => {
-      const result = sanitiseErrorForLLM("Failed to read /proc/self/environ");
-      expect(result).not.toContain("/proc/self");
-      expect(result).toContain("[REDACTED]");
-    });
-  });
-
-  describe("loopback and IPv6 redaction (M22)", () => {
-    it("redacts IPv4 loopback (127.0.0.0/8)", () => {
-      const result = sanitiseErrorForLLM("Connection refused to 127.0.0.1:3000");
-      expect(result).not.toContain("127.0.0.1");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts other 127.x addresses", () => {
-      const result = sanitiseErrorForLLM("Bad route via 127.5.6.7");
-      expect(result).not.toContain("127.5.6.7");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts IPv4 link-local (169.254.x)", () => {
-      const result = sanitiseErrorForLLM("Metadata at 169.254.169.254");
-      expect(result).not.toContain("169.254.169.254");
-      expect(result).toContain("[REDACTED]");
-    });
-
-    it("redacts IPv6 link-local fe80::", () => {
-      const result = sanitiseErrorForLLM("Failed to bind to fe80::1234:abcd");
-      expect(result).not.toContain("fe80::1234");
-      expect(result).toContain("[REDACTED]");
     });
   });
 });

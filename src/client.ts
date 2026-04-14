@@ -4,8 +4,39 @@ import { GorgiasApiError } from "./errors.js";
  * Gorgias API HTTP client with authentication, rate-limit handling, and error parsing.
  */
 
+const ALLOWED_HOST_SUFFIX = ".gorgias.com";
+
+/**
+ * Validates that a resolved URL's hostname is on the Gorgias allowlist.
+ * Prevents SSRF by rejecting any hostname that is not gorgias.com or a
+ * subdomain of gorgias.com.
+ */
+function assertGorgiasHost(urlString: string): void {
+  const host = new URL(urlString).hostname.toLowerCase();
+  if (host !== "gorgias.com" && !host.endsWith(ALLOWED_HOST_SUFFIX)) {
+    throw new Error(
+      `Domain not on allowlist: hostname "${host}" is not a *.gorgias.com address.`,
+    );
+  }
+}
+
 function buildBaseUrl(domain: string): string {
   let d = domain.trim();
+
+  // Reject empty / whitespace-only input
+  if (d.length === 0) {
+    throw new Error("Domain must not be empty.");
+  }
+
+  // Reject internal whitespace
+  if (/\s/.test(d)) {
+    throw new Error("Domain must not contain whitespace.");
+  }
+
+  // Reject trailing dots
+  if (d.endsWith(".")) {
+    throw new Error("Domain must not end with a trailing dot.");
+  }
 
   // Reject insecure http:// URLs to prevent sending credentials over plaintext
   if (d.startsWith("http://")) {
@@ -14,7 +45,9 @@ function buildBaseUrl(domain: string): string {
 
   // Already a full URL – use the URL parser to extract only the origin
   if (d.startsWith("https://")) {
-    return new URL(d).origin;
+    const resolved = new URL(d).origin;
+    assertGorgiasHost(resolved);
+    return resolved;
   }
 
   // Strip trailing slashes and /api/ suffix for non-URL inputs
@@ -22,10 +55,12 @@ function buildBaseUrl(domain: string): string {
 
   // Has domain suffix (e.g., "mycompany.gorgias.com")
   if (d.includes(".")) {
-    return `https://${d}`;
+    const resolved = `https://${d}`;
+    assertGorgiasHost(resolved);
+    return resolved;
   }
 
-  // Just a subdomain name (e.g., "mycompany")
+  // Just a subdomain name (e.g., "mycompany") — always safe
   return `https://${d}.gorgias.com`;
 }
 

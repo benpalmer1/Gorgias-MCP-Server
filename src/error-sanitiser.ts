@@ -84,39 +84,61 @@ const REDACTION_PATTERNS: { pattern: RegExp; replacement: string }[] = [
   { pattern: /\bfc[0-9a-fA-F]{2}::[0-9a-fA-F:]+\b/g, replacement: "[REDACTED]" },
   { pattern: /\bfd[0-9a-fA-F]{2}::[0-9a-fA-F:]+\b/g, replacement: "[REDACTED]" },
 
-  // Node.js stack-trace lines  (    at Something (file:line:col))
-  { pattern: /^\s*at\s+.+$/gm, replacement: "[REDACTED]" },
+  // Node.js stack-trace lines — require the (file:line:col) suffix to avoid
+  // false-positives on prose beginning with "At " (L4).
+  { pattern: /^\s*at\s+\S+\s+\(.+?:\d+:\d+\)\s*$/gm, replacement: "[REDACTED]" },
 ];
 
-/**
- * Accept any thrown value, extract its message, strip sensitive content,
- * and return a string safe to surface to an LLM.
- */
-export function sanitiseErrorForLLM(error: unknown): string {
-  let message: string;
+const MAX_CAUSE_DEPTH = 5;
 
-  if (error instanceof Error) {
-    message = error.message;
-  } else if (typeof error === "string") {
-    message = error;
-  } else if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof (error as Record<string, unknown>).message === "string"
-  ) {
-    message = (error as Record<string, unknown>).message as string;
-  } else {
-    message = String(error);
+/**
+ * Walk the `.cause` chain of an error (up to MAX_CAUSE_DEPTH levels),
+ * collecting each message. Cycle-safe via a `seen` set.
+ * `error.stack` is deliberately excluded — high-noise, low-signal for LLMs.
+ */
+function extractFullMessage(error: unknown): string {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  let depth = 0;
+
+  while (current != null && depth < MAX_CAUSE_DEPTH && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof Error) {
+      parts.push(current.message);
+      current = (current as Error & { cause?: unknown }).cause;
+    } else if (typeof current === "string") {
+      parts.push(current);
+      break;
+    } else if (
+      typeof current === "object" &&
+      "message" in (current as object) &&
+      typeof (current as { message: unknown }).message === "string"
+    ) {
+      parts.push((current as { message: string }).message);
+      break;
+    } else {
+      parts.push(String(current));
+      break;
+    }
+    depth++;
   }
 
+  return parts.filter(p => p.length > 0).join(" | caused by: ");
+}
+
+/**
+ * Accept any thrown value, extract its message (including cause chain),
+ * strip sensitive content, and return a string safe to surface to an LLM.
+ */
+export function sanitiseErrorForLLM(error: unknown): string {
+  let message = extractFullMessage(error);
+
   for (const { pattern, replacement } of REDACTION_PATTERNS) {
-    // Reset lastIndex for stateful (global / multiline) regexes
     pattern.lastIndex = 0;
     message = message.replace(pattern, replacement);
   }
 
-  // Collapse runs of whitespace that redactions may leave behind
   message = message.replace(/\n{3,}/g, "\n\n").trim();
 
   if (message.length === 0) {
