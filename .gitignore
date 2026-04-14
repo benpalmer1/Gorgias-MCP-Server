@@ -18,3 +18,5 @@ tmp_*.md
 *.log
 *.tmp
 *.yaml
+.mcp.json
+claude.md
