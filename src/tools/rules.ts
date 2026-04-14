@@ -13,7 +13,7 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
     inputSchema: {
       cursor: cursorSchema.optional().describe("Pagination cursor from a previous response (value of meta.next_cursor)"),
       limit: z.number().min(1).max(100).optional().describe("Max results per page (default: 100, max: 100)"),
-      order_by: z.string().optional().describe("Sort order, e.g. 'created_datetime:desc' or 'created_datetime:asc'"),
+      order_by: z.enum(["created_datetime:asc", "created_datetime:desc"]).optional().describe("Sort order. Default: created_datetime:desc."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {

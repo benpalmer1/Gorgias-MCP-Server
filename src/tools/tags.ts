@@ -13,7 +13,11 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
     inputSchema: {
       cursor: cursorSchema.optional().describe("Pagination cursor from a previous response"),
       limit: z.number().min(1).max(100).optional().describe("Max results per page (default: 30)"),
-      order_by: z.string().optional().describe("Sort order, e.g. 'created_datetime:desc'"),
+      order_by: z.enum([
+        "created_datetime:asc", "created_datetime:desc",
+        "name:asc", "name:desc",
+        "usage:asc", "usage:desc",
+      ]).optional().describe("Sort order. Default: created_datetime:desc."),
       search: z.string().optional().describe("Case-insensitive search on tag names"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },

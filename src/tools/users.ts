@@ -52,7 +52,7 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
       bio: z.string().optional().describe("Short biography of the user"),
       country: z.string().optional().describe("Country of the user as ISO 3166-1 alpha-2 code (e.g. 'FR', 'US')"),
       external_id: z.string().optional().describe("ID of the user in a foreign system (e.g. Stripe, Aircall). Not used by Gorgias."),
-      language: z.string().optional().describe("Preferred language for the user's Gorgias interface as ISO 639-1 code (e.g. 'en', 'fr')"),
+      language: z.enum(["fr", "en"]).optional().describe("UI locale for the user's Gorgias interface. Gorgias restricts this field to 'fr' or 'en' (agent UI language, not ticket content language)."),
       meta: z.record(z.string(), z.unknown()).optional().describe("Arbitrary key-value data to associate with the user. Not used by Gorgias internally."),
       role: z.object({
         name: z.string().describe("Role name to assign. Known values: 'admin', 'agent'"),
@@ -75,7 +75,7 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
       country: z.string().nullable().optional().describe("Country of the user as ISO 3166-1 alpha-2 code. Pass null to clear."),
       email: z.string().email().optional().describe("Email address of the user. Requires password_confirmation when changing."),
       external_id: z.string().optional().describe("ID of the user in a foreign system. Not used by Gorgias."),
-      language: z.string().nullable().optional().describe("Preferred language as ISO 639-1 code (e.g. 'en', 'fr'). Pass null to clear."),
+      language: z.enum(["fr", "en"]).nullable().optional().describe("UI locale for the user. 'fr' or 'en' only. Pass null to clear."),
       meta: z.record(z.string(), z.unknown()).optional().describe("Arbitrary key-value data. Replaces existing meta entirely when provided."),
       name: z.string().optional().describe("Full name of the user"),
       new_password: z.string().optional().describe("New password for the user. Requires old_password to also be provided."),
