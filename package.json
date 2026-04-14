@@ -1,6 +1,6 @@
 {
   "name": "gorgias-mcp-server",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "MCP server exposing the full Gorgias helpdesk API to AI assistants",
   "type": "module",
   "main": "dist/server.js",

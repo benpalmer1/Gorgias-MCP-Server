@@ -6,7 +6,7 @@ An MCP server that exposes the full Gorgias helpdesk API to AI assistants.
 
 ## What is this?
 
-Gorgias MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants -- Claude, and any other MCP-compatible client -- complete access to the Gorgias helpdesk platform. It ships with **113 tools**: 3 high-level "smart" tools that handle the most common workflows, plus 110 raw API tools covering every Gorgias REST endpoint.
+Gorgias MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants -- Claude, and any other MCP-compatible client -- complete access to the Gorgias helpdesk platform. It ships with **112 tools**: 3 high-level "smart" tools that handle the most common workflows, plus 109 raw API tools covering every Gorgias REST endpoint.
 
 Connect it to Claude Desktop (or any MCP client) and you can search tickets, read conversations, pull analytics, manage customers, and operate your entire helpdesk through natural language.
 
@@ -53,7 +53,7 @@ The three smart tools are the primary interface. They compose multiple API calls
 | `gorgias_smart_get_ticket` | Retrieves a ticket with its full conversation thread. Fetches ticket and messages in parallel, sorts chronologically, and projects to a compact format stripped to essential fields. |
 | `gorgias_smart_stats` | Analytics with automatic defaults, input validation, dimension resolution, and agent name-to-ID resolution. Covers volume, performance, quality, automation, voice, and breakdown scopes. |
 
-These handle the common 80% of use cases. The 110 raw tools provide direct API access for everything else -- bulk operations, custom field management, rule configuration, and more.
+These handle the common 80% of use cases. The 109 raw tools provide direct API access for everything else -- bulk operations, custom field management, rule configuration, and more.
 
 ---
 
@@ -98,9 +98,9 @@ Control which tools are exposed to the AI with `GORGIAS_ACCESS_LEVEL`:
 
 | Level | Tools | Use Case |
 |-------|-------|----------|
-| `readonly` | 52 tools (all read/search/list/smart tools) | Analytics bots, dashboards, monitoring |
-| `agent` | 62 tools (readonly + reply, close, tag, reassign) | Customer-facing support chatbots |
-| `admin` | All 113 tools (default) | Internal admin tools, full API access |
+| `readonly` | 50 tools (all read/search/list/smart tools) | Analytics bots, dashboards, monitoring |
+| `agent` | 61 tools (readonly + reply, close, tag, reassign) | Customer-facing support chatbots |
+| `admin` | All 112 tools (default) | Internal admin tools, full API access |
 
 ```bash
 GORGIAS_ACCESS_LEVEL=readonly   # Only read operations exposed
@@ -280,12 +280,16 @@ export async function handler(req, res) {
 
 ```typescript
 import {
-  createGorgiasServer,  // Factory — returns a configured McpServer
+  createGorgiasServer,      // Factory — returns a configured McpServer
   type GorgiasServerConfig,
-  type AccessLevel,       // "readonly" | "agent" | "admin"
+  type AccessLevel,           // "readonly" | "agent" | "admin"
+  type AccessFilterStats,     // { registeredCount, skippedCount }
   type GorgiasClientConfig,
-  isToolAllowed,          // Check if a tool passes an access level
-  AGENT_WRITE_TOOLS,      // Set of tool names allowed in agent tier
+  isToolAllowed,              // Check if a tool passes an access level
+  getAccessFilterStats,       // Read tool registration counts from a server
+  AGENT_WRITE_TOOLS,          // Set of tool names allowed in agent tier
+  GorgiasError,               // Base error class
+  GorgiasApiError,            // API-specific error (status, endpoint, body)
 } from "gorgias-mcp-server";
 ```
 
@@ -293,17 +297,17 @@ import {
 
 ## Available Tools
 
-113 tools organised by category:
+112 tools organised by category:
 
 | Category | Count | Description |
 |----------|------:|-------------|
 | **Smart Tools** | 3 | Intelligent search, ticket detail, and analytics |
 | **Tickets** | 13 | List, get, create, update, delete tickets; manage tags and custom fields on tickets |
-| **Customers** | 11 | List, get, create, update, delete customers; merge customers; manage data and field values |
+| **Customers** | 12 | List, get, create, update, delete customers; merge customers; manage data and field values |
 | **Messages** | 6 | List messages by ticket, list all messages, get, create, update, delete |
 | **Tags** | 7 | Full CRUD, bulk delete, and tag merging |
 | **Views** | 7 | Full CRUD; list and search view items |
-| **Statistics & Reporting** | 3 | Retrieve statistics, download statistics, retrieve reporting data |
+| **Reporting** | 1 | Retrieve reporting data (the legacy statistics endpoints have been removed) |
 | **Users** | 5 | User management and lookup |
 | **Teams** | 5 | Team management |
 | **Rules** | 6 | Automation rule CRUD and management |
@@ -365,7 +369,7 @@ The HTTP client automatically retries 429 responses up to 3 times with exponenti
 - Check `claude mcp list` (Claude Code CLI) to confirm registration.
 
 ### Domain format errors
-Accepted formats: `mycompany`, `mycompany.gorgias.com`, `https://mycompany.gorgias.com`. Plain `http://` is rejected. Whitespace, empty strings, and internal spaces will fail at request time. Only `*.gorgias.com` hosts are intended; pointing the server at an unrelated host is your responsibility.
+Accepted formats: `mycompany`, `mycompany.gorgias.com`, `https://mycompany.gorgias.com`. Plain `http://` is rejected. Whitespace, empty strings, and internal spaces will fail at request time. The SSRF hostname allowlist enforces `*.gorgias.com` -- non-Gorgias hosts, raw IPs, and confusable trailing-label bypasses are rejected at startup.
 
 ### `Maximum allowed period size is 366 days` (smart_stats / reporting)
 The Gorgias reporting API enforces a 366-day maximum range per request. Split longer queries into multiple windows.
@@ -378,9 +382,10 @@ The tool caps each query at 100 rows. Multi-agent + daily-granularity queries hi
 ## Architecture
 
 - **Smart tool composition** -- Smart tools orchestrate multiple API calls with caching, response projection, and fuzzy matching to deliver concise, relevant results.
-- **Error sanitisation** -- All errors are stripped of sensitive data (credentials, internal URLs) before being surfaced to the LLM.
+- **Error sanitisation** -- All errors are stripped of sensitive data (credentials, internal URLs, vendor API keys, email addresses) before being surfaced to the LLM. Walks the `error.cause` chain up to 5 levels deep.
+- **SSRF hostname allowlist** -- `buildBaseUrl` validates that the resolved hostname is `*.gorgias.com`, rejecting non-Gorgias hosts, raw IPs, and confusable bypasses.
 - **In-memory TTL cache** -- Reference data (users, tags, views) is cached for 10 minutes to reduce API calls during multi-step workflows.
-- **Rate limit handling** -- Respects the Gorgias leaky-bucket rate limiter. Returns clear retry-after information on 429 responses.
+- **Rate limit handling** -- Respects the Gorgias leaky-bucket rate limiter with automatic exponential backoff (1s/2s/4s + jitter). Caps `Retry-After` at 60 seconds.
 
 ---
 

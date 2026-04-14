@@ -150,13 +150,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The startup log previously read `_accessFilterStats` from the returned `rawServer`, but `withAccessFilter` exposed this property only via its proxy — and the proxy was discarded by `createGorgiasServer` to work around an `McpServer` private-fields incompatibility. The startup log therefore always silently dropped the tool count segment.
 
-Stats are now stored in a module-level `WeakMap<McpServer, AccessFilterStats>` keyed by the raw server, and read via the new exported helper `getAccessFilterStats(server)`. Admin mode also wraps `registerTool` (without filtering) so the count appears for every level. The startup log now reads, e.g. `Gorgias MCP server started — 113 tools registered (access level: admin)`.
+Stats are now stored in a module-level `WeakMap<McpServer, AccessFilterStats>` keyed by the raw server, and read via the new exported helper `getAccessFilterStats(server)`. Admin mode also wraps `registerTool` (without filtering) so the count appears for every level. The startup log now reads, e.g. `Gorgias MCP server started — 112 tools registered (access level: admin)`.
 
 ### Documentation
 
 - New **Troubleshooting** section in the README covering 401/403/429, missing tools, domain format errors, the 366-day reporting period limit, and the smart_stats 100-row cap.
 - **Security** section expanded with the in-memory cache TTL, the admin-default warning, the 30-second request timeout, and the secrets-in-source-control reminder.
-- **Tool count** corrected from 114 to 113 after removing `gorgias_delete_users` (Users category 6 → 5).
+- **Tool count** corrected to 112 after removing `gorgias_delete_users` (Users 6 → 5), removing `statistics.ts` (−2 tools), and adding `gorgias_update_customer_fields` (+1 tool).
 - **`engines.node`** bumped from `>=18.0.0` to `>=20.0.0`. Node 18 reached end-of-life on 2025-04-30.
 - **`exports` condition order** in `package.json` now lists `types` before `import`, matching TypeScript / Node best practice. With `moduleResolution: "nodenext"` or `"bundler"`, the previous order could cause TypeScript consumers to see the package as untyped.
 

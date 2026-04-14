@@ -488,3 +488,49 @@ describe("H18: buildBaseUrl SSRF allowlist", () => {
     expect(getBaseUrl("https://MyCompany.GORGIAS.COM")).toBe("https://mycompany.gorgias.com");
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildBaseUrl trailing-slash and /api stripping (CodeQL js/polynomial-redos fix)
+// ---------------------------------------------------------------------------
+
+describe("buildBaseUrl slash and /api stripping", () => {
+  it("strips single trailing slash from hostname", () => {
+    expect(getBaseUrl("mycompany.gorgias.com/")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("strips multiple trailing slashes from hostname", () => {
+    expect(getBaseUrl("mycompany.gorgias.com///")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("strips /api suffix", () => {
+    expect(getBaseUrl("mycompany.gorgias.com/api")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("strips /api/ with trailing slash", () => {
+    expect(getBaseUrl("mycompany.gorgias.com/api/")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("strips /api with multiple trailing slashes", () => {
+    expect(getBaseUrl("mycompany.gorgias.com/api///")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("does not strip /apix (partial match)", () => {
+    // /apix does NOT match the /api suffix strip — it stays in the base URL
+    expect(getBaseUrl("mycompany.gorgias.com/apix")).toBe("https://mycompany.gorgias.com/apix");
+  });
+
+  it("strips only the last /api when doubled", () => {
+    // "foo.gorgias.com/api/api" → strip trailing /api → "foo.gorgias.com/api"
+    // This is an unusual input but should not crash
+    expect(() => buildClientDomain("mycompany.gorgias.com/api/api")).not.toThrow();
+  });
+
+  it("handles bare subdomain with no slashes", () => {
+    expect(getBaseUrl("mycompany")).toBe("https://mycompany.gorgias.com");
+  });
+
+  it("handles hostname with many trailing slashes (no polynomial backtracking)", () => {
+    const manySlashes = "mycompany.gorgias.com" + "/".repeat(10000);
+    expect(getBaseUrl(manySlashes)).toBe("https://mycompany.gorgias.com");
+  });
+});

@@ -51,7 +51,10 @@ function buildBaseUrl(domain: string): string {
   }
 
   // Strip trailing slashes and /api/ suffix for non-URL inputs
-  d = d.replace(/\/+$/, "").replace(/\/api\/?$/, "");
+  // (uses string ops instead of regex to avoid polynomial backtracking — CodeQL js/polynomial-redos)
+  while (d.endsWith("/")) d = d.slice(0, -1);
+  if (d.endsWith("/api")) d = d.slice(0, -4);
+  while (d.endsWith("/")) d = d.slice(0, -1);
 
   // Has domain suffix (e.g., "mycompany.gorgias.com")
   if (d.includes(".")) {
