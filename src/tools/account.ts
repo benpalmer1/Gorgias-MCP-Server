@@ -52,8 +52,8 @@ export function registerAccountTools(server: McpServer, client: GorgiasClient) {
     inputSchema: {
       id: idSchema.describe("The ID of the setting to update"),
       type: z.string().describe("The type/category of the setting. Should match the existing setting's type (e.g. 'business-hours')"),
-      name: z.string().optional().describe("Human-readable name for this setting"),
-      data: z.record(z.string(), z.unknown()).optional().describe("The new configuration data for the setting. Replaces the existing data entirely. For 'business-hours': { timezone: string, business_hours: { days: string, from_time: string, to_time: string } }"),
+      name: z.string().nullable().optional().describe("Human-readable name for this setting. Pass null to clear."),
+      data: z.record(z.string(), z.unknown()).nullable().optional().describe("The new configuration data for the setting. Replaces the existing data entirely. Pass null to clear. For 'business-hours': { timezone: string, business_hours: { days: string, from_time: string, to_time: string } }"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id, ...body }) => {

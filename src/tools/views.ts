@@ -76,7 +76,7 @@ export function registerViewTools(server: McpServer, client: GorgiasClient) {
       visibility: z.enum(["public", "shared", "private"]).optional().describe("Access level: 'public' (all users), 'shared' (specific users/teams plus admins), 'private' (single user)"),
       decoration: z.object({
         emoji: z.string().nullable().optional().describe("Emoji character displayed before the view name in the UI"),
-      }).optional().describe("Display configuration for the view"),
+      }).nullable().optional().describe("Display configuration for the view. Pass null to remove decoration."),
       fields: z.array(z.enum([
         "id", "details", "tags", "customer", "last_message", "name", "email",
         "created", "updated", "assignee", "assignee_team", "channel", "closed",

@@ -66,7 +66,7 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
       description: z.string().max(1024).nullable().optional().describe("New description"),
       decoration: z.object({
         color: z.string().describe("Hex color code"),
-      }).optional().describe("Visual styling for the tag"),
+      }).nullable().optional().describe("Visual styling for the tag. Pass null to remove decoration."),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id, ...body }) => {

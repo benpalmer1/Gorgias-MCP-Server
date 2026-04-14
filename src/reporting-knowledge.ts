@@ -23,7 +23,7 @@ export const SCOPE_TIME_DIMENSION: Record<string, string> = {
   "messages-sent": "sentDatetime",
   "first-response-time": "firstAgentMessageDatetime",
   "human-first-response-time": "firstAgentMessageDatetime",
-  "response-time": "createdDatetime",
+  "response-time": "sentDatetime",
   "messages-per-ticket": "createdDatetime",
   "ticket-handle-time": "createdDatetime",
   "online-time": "timestamp",

@@ -36,6 +36,7 @@ export const AGENT_WRITE_TOOLS: ReadonlySet<string> = new Set([
 
   // Customer field values (agents often update these during triage)
   "gorgias_update_customer_field_value",
+  "gorgias_update_customer_fields",
 ]);
 
 /**

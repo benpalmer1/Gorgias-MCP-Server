@@ -96,7 +96,7 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
         priority: z.number().int().describe("The new execution priority for the rule (higher values execute first)"),
       })).min(1).describe("Array of rule ID and priority pairs to update"),
     },
-    annotations: { readOnlyHint: false, openWorldHint: true },
+    annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
     // The Gorgias API expects the body to be wrapped in a { priorities: [...] }
     // object, NOT the bare array. Sending the array alone produces a 400.

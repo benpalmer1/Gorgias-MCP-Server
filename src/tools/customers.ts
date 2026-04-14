@@ -9,7 +9,7 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
   // --- List Customers ---
   server.registerTool("gorgias_list_customers", {
     title: "List Customers",
-    description: "GET /api/customers — List customers, paginated and ordered by name. Supports filtering by email, external ID, name, language, timezone, view, channel type, and channel address.",
+    description: "GET /api/customers — List customers (paginated, default order: created_datetime:desc). Supports filtering by email, external ID, name, language, timezone, view, channel type, and channel address.",
     inputSchema: {
       cursor: cursorSchema.optional().describe("Pagination cursor from a previous response. Omit to retrieve the first page."),
       email: z.string().nullable().optional().describe("Filter by the primary email address of the customer."),
@@ -189,12 +189,12 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
   // --- Update Customer Field Value ---
   server.registerTool("gorgias_update_customer_field_value", {
     title: "Update Customer Field Value",
-    description: "PUT /api/customers/{customer_id}/custom-fields/{id} — Update the value of a single custom field for a given customer. The value type must match the field's configured data type (text, number, or boolean).",
+    description: "PUT /api/customers/{customer_id}/custom-fields/{id} — Update the value of a single custom field for a given customer. The path 'id' is the custom field definition ID (field.id from GET /api/customers/{customer_id}/custom-fields). Value type must match the field's data_type: string for 'text', number for 'number', boolean for 'boolean'. Pass null to clear the value.",
     inputSchema: {
       customer_id: idSchema.describe("The ID of the customer whose custom field value is to be updated."),
-      id: idSchema.describe("The ID of the custom field to update the value for."),
-      definition_id: idSchema.describe("The custom field DEFINITION ID (from gorgias_list_custom_fields). Sent as 'id' in the request body."),
-      value: z.any().describe("The new value for the custom field. String for text fields, number for number fields, boolean for boolean fields. Pass null to clear."),
+      id: idSchema.describe("The custom field definition ID (field.id from GET /api/customers/{customer_id}/custom-fields)"),
+      definition_id: idSchema.describe("The custom field definition ID sent as 'id' in the request body. Typically the same as the path 'id'."),
+      value: z.any().describe("The new value to assign. Type must match field's data_type: string (text), number (number), boolean (boolean). Pass null to clear."),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ customer_id, id, definition_id, value }) => {
@@ -202,13 +202,30 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 
+  // --- Bulk Update Customer Custom Field Values ---
+  server.registerTool("gorgias_update_customer_fields", {
+    title: "Update Customer Custom Field Values (Bulk)",
+    description: "PUT /api/customers/{customer_id}/custom-fields — Update multiple custom field values on a customer in a single request. Each item in the 'fields' array requires 'id' (the CUSTOM FIELD DEFINITION ID from GET /api/custom-fields) and 'value'. Fields not included are left unchanged. Returns array of updated field value objects.",
+    inputSchema: {
+      customer_id: idSchema.describe("The ID of the customer whose custom field values are being updated"),
+      fields: z.array(z.object({
+        id: idSchema.describe("The custom field DEFINITION ID (from GET /api/custom-fields)"),
+        value: z.any().describe("The new value. Type must match field's data_type: string (text), number (number), boolean (boolean). Pass null to clear."),
+      })).min(1).describe("Array of custom field updates. Each item needs 'id' (definition ID) and 'value'. The request body sent to the API is this array directly."),
+    },
+    annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
+  }, safeHandler(async ({ customer_id, fields }) => {
+    const result = await client.put(`/api/customers/${customer_id}/custom-fields`, fields);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+  }));
+
   // --- Delete Customer Field Value ---
   server.registerTool("gorgias_delete_customer_field_value", {
     title: "Delete Customer Field Value",
-    description: "DELETE /api/customers/{customer_id}/custom-fields/{id} — Delete the value assigned to a specific custom field for a customer. The custom field definition itself is not affected.",
+    description: "DELETE /api/customers/{customer_id}/custom-fields/{id} — Remove a custom field value from a customer. This removes the value assignment on the customer — it does NOT delete the custom field definition. The path 'id' is the custom field definition ID (field.id from GET /api/customers/{customer_id}/custom-fields). Returns 204 No Content on success.",
     inputSchema: {
       customer_id: idSchema.describe("The ID of the customer whose custom field value is to be deleted."),
-      id: idSchema.describe("The ID of the custom field for which the value should be deleted."),
+      id: idSchema.describe("The custom field definition ID (field.id from GET /api/customers/{customer_id}/custom-fields)"),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ customer_id, id }) => {

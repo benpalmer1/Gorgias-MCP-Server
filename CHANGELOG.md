@@ -7,21 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed — write endpoint audit (20-agent verification pass)
+### Fixed — schema correctness, write/update paths
 
 - **CRITICAL: Events `created_datetime` filter crash.** The nested `{gte, lt, ...}` object was passed directly to the query serializer which throws on objects. Now flattened to bracket-notation (`created_datetime[gte]=...`) before the API call.
-- **HIGH: Custom field path parameter describes.** `list_ticket_fields`, `update_ticket_field`, and `delete_ticket_field` all referenced a non-existent "value record ID". Fixed to document `field.id` (the definition ID) as the correct identifier, matching the live API response shape.
-- **Customer update missing fields.** `gorgias_update_customer` was missing `firstname`, `lastname`, `note`, `meta`, and `custom_fields` — all present on create and visible in GET responses. Added with `.nullable().optional()`.
-- **File download regex.** `resource_name` regex rejected dots, blocking every filename with an extension (e.g. `file.png`). Fixed to `/^[a-zA-Z0-9._-]+$/`.
-- **View update missing fields.** Added `search` and `section_id` to update schema (both present on create and in GET responses). Added `section_id` to create schema.
+- **Reporting `response-time` time dimension.** Was `createdDatetime` but should be `sentDatetime`. Would have caused incorrect first-response-time data when using the raw reporting tool.
+- **smart-search `viewSearch()` limit leaked into body.** The `limit` param was being sent inside the PUT body instead of as a query parameter. Fixed to `client.put("/api/views/0/items", { view }, { limit })`.
+- **Custom field path parameter descriptions.** `list_ticket_fields`, `update_ticket_field`, and `delete_ticket_field` all referenced a non-existent "value record ID". Fixed to document `field.id` (the definition ID) as the correct identifier, matching the live API response shape. Customer field equivalents aligned to match.
+- **Customer update missing fields.** `gorgias_update_customer` was missing `firstname`, `lastname`, `note`, `meta`, and `custom_fields` — all present on create and visible in GET responses.
+- **Customer bulk field update added.** `gorgias_update_customer_fields` (PUT /api/customers/{id}/custom-fields with array body) — tickets had this but customers didn't.
+- **View update missing fields.** Added `search` and `section_id` to update schema. Added `section_id` to create schema.
 - **Integration update missing `business_hours_id`.** Present on create but absent from update, preventing modification of business hours association on existing integrations.
 - **Ticket-message update missing fields.** Added `public` (controls customer visibility — critical for internal note toggling), `mention_ids`, `integration_id`, `headers`, `meta`. Fixed `attachments` nullable inconsistency.
 - **Customer field value type.** Changed from `z.union([string, int, boolean])` to `z.any()` to allow `null` (clearing values), matching the ticket equivalent.
-- **smart_stats description corrections.** Fixed "default 1000" to "default 100" (matches actual code). Removed stale reference to deleted `gorgias_retrieve_statistic` tool.
+- **File download regex.** `resource_name` regex rejected dots, blocking every filename with an extension (e.g. `file.png`). Fixed to `/^[a-zA-Z0-9._-]+$/` with path-traversal guards.
+- **7 nullable inconsistencies.** Fields that return `null` from GET but rejected `null` on update: `external_id`/`meta`/`timezone` on user update, `decoration` on tag and view update, `scheduled_datetime`/`meta` on job create, `priority` on custom-field bulk update, `spam` on ticket update.
+
+### Fixed — schema correctness, read/list paths and reporting
+
+- **Reporting `teamId` dimension removal.** `teamId` is not a valid dimension in the Gorgias reporting API. The `team` alias now maps to `null`, and `teamId` is absent from all `SCOPE_VALID_DIMENSIONS` entries.
+- **Tags `order_by` compound sort.** Usage-based sort now requires a secondary `name` sort: `usage:asc,name:asc` and `usage:desc,name:desc` replace the bare forms that the API rejects.
+- **Macros `order_by` enum.** Removed `archived_datetime:asc/desc` sort options (not supported by the Gorgias API).
+- **Events `order_by` enum.** Removed bare `"created_datetime"` (only directional forms accepted).
+- **Account settings `limit`/`cursor` removal.** The endpoint returns all settings in a single response and does not support pagination.
 - **Reporting scope count.** Fixed "26 total" to "27 total" in `gorgias_retrieve_reporting_statistic` description.
-- **Macros `order_by` enum.** Added `archived_datetime:asc/desc` sort options.
-- **Events `order_by` enum.** Removed bare `"created_datetime"` (inconsistent with other tools; only directional forms accepted).
-- **Integration type filter describe.** Clarified that only `"http"` is supported as a filter value, though other types exist in the system.
+- **smart_stats description corrections.** Fixed "default 1000" to "default 100". Removed stale reference to deleted `gorgias_retrieve_statistic` tool.
+
+### Fixed — description and annotation accuracy
+
+- **Ticket response shape descriptions.** `list_ticket_tags` and `list_ticket_fields` said "Returns a direct JSON array" but the API returns `{data: [...]}` wrapper. Corrected.
+- **Customer list description.** Said "ordered by name" but the default is `created_datetime:desc`. Corrected.
+- **Teams description.** Said "Returns a plain JSON array" but actually returns a cursor-based paginated response. Corrected.
+- **Integration type filter.** Clarified that only `"http"` is supported as a filter value, though other types exist in the system.
+- **Search response normalization.** `gorgias_search` description now notes that results are always returned as a flat array.
+- **Annotation corrections.** `delete_voice_call_recording` and `update_rules_priorities` were missing `idempotentHint: true`.
 
 ### Fixed — live API verification (C12, C15, H21, M5)
 
@@ -107,7 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`gorgias_list_events`** corrections:
   - `user_ids` is now `array<int>` (was a single integer despite the plural name).
   - `types` is now `array<string>` (was a single string).
-  - `object_type` enum corrected: `TicketMessage` → `Message`, `Rule` → `TicketRule`, plus added the missing `SatisfactionSurvey` value.
+  - `object_type` enum: kept `TicketMessage` and `Rule` (verified against live API 2026-04-14 as the correct values; `Message` and `TicketRule` are rejected). Added the missing `SatisfactionSurvey` value.
   - Added the documented `created_datetime` comparator filter (`gt`/`gte`/`lt`/`lte`).
   - `order_by` is now an enum and `limit` is bounded.
 

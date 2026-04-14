@@ -150,7 +150,7 @@ Each message in the 'messages' array must include:
         id: idSchema.describe("ID of the custom field definition"),
         value: z.any().describe("Value of the custom field (string, number, boolean, or null to clear)"),
       })).nullable().optional().describe("Custom field values. WARNING: This replaces existing custom field values."),
-      spam: z.boolean().optional().describe("Whether the ticket is considered spam"),
+      spam: z.boolean().nullable().optional().describe("Whether the ticket is considered spam"),
       from_agent: z.boolean().nullable().optional().describe("Whether the first message was sent by your company (true) or a customer (false)"),
       language: z.string().nullable().optional().describe("Language primarily used in the ticket (e.g. 'en', 'fr')"),
       external_id: z.string().max(255).nullable().optional().describe("ID of the ticket in a foreign system (max 255 chars)"),
@@ -189,7 +189,7 @@ Each message in the 'messages' array must include:
   // --- List Ticket Tags ---
   server.registerTool("gorgias_list_ticket_tags", {
     title: "List Ticket Tags",
-    description: "GET /api/tickets/{ticket_id}/tags — List all tags currently associated with a specific ticket. Returns a direct JSON array (not paginated). Each tag includes id, name, description, decoration, usage count, uri, and timestamps.",
+    description: "GET /api/tickets/{ticket_id}/tags — List all tags currently associated with a specific ticket. Returns {data: [...]} with a tag array (not cursor-paginated). Each tag includes id, name, description, decoration, usage count, uri, and timestamps.",
     inputSchema: {
       ticket_id: idSchema.describe("The unique ID of the ticket whose tags to list"),
     },
@@ -253,7 +253,7 @@ Each message in the 'messages' array must include:
   // --- List Ticket Custom Field Values ---
   server.registerTool("gorgias_list_ticket_fields", {
     title: "List Ticket Custom Field Values",
-    description: "GET /api/tickets/{ticket_id}/custom-fields — List all custom field values currently assigned to a specific ticket. Returns a direct JSON array. Each item has 'field' (nested object with 'id', 'label', 'object_type', 'definition'), 'prediction', and 'value'. Use field.id as the identifier for update/delete operations on this ticket's custom field values.",
+    description: "GET /api/tickets/{ticket_id}/custom-fields — List all custom field values currently assigned to a specific ticket. Returns {data: [...]} with an array of field-value objects. Each item has 'field' (nested object with 'id', 'label', 'object_type', 'definition'), 'prediction', and 'value'. Use field.id as the identifier for update/delete operations on this ticket's custom field values.",
     inputSchema: {
       ticket_id: idSchema.describe("The unique ID of the ticket whose custom field values to list"),
     },

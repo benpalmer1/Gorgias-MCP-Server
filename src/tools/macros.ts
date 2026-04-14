@@ -153,7 +153,7 @@ export function registerMacroTools(server: McpServer, client: GorgiasClient) {
     inputSchema: {
       ids: z.array(idSchema).min(1).max(30).describe("List of macro IDs to archive (min: 1, max: 30 per request)"),
     },
-    annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
+    annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
     const result = await client.put("/api/macros/archive", args);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };

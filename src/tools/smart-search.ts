@@ -353,8 +353,7 @@ async function viewSearch(
 ): Promise<any[]> {
   const response = (await client.put("/api/views/0/items", {
     view: { search: searchTerm, type: "ticket-list" },
-    limit,
-  })) as { data?: any[] } | any[];
+  }, { limit })) as { data?: any[] } | any[];
 
   if (Array.isArray(response)) return response;
   return (response as any)?.data ?? [];

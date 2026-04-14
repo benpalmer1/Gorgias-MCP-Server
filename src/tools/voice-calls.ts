@@ -97,7 +97,7 @@ export function registerVoiceCallTools(server: McpServer, client: GorgiasClient)
     inputSchema: {
       id: idSchema.describe("The unique identifier of the voice call recording to delete"),
     },
-    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
     const result = await client.delete(`/api/phone/voice-call-recordings/${id}`);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };

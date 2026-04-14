@@ -42,8 +42,8 @@ export function registerJobTools(server: McpServer, client: GorgiasClient) {
     description: "POST /api/jobs — Create a new asynchronous job. Jobs run in the background for long-running tasks such as bulk ticket updates, macro application, exports, and imports.",
     inputSchema: {
       type: z.enum(["applyMacro", "deleteTicket", "exportTicket", "exportMacro", "importMacro", "updateTicket", "exportTicketDrilldown", "exportConvertCampaignSalesDrilldown"]).describe("The type of job to create"),
-      scheduled_datetime: z.string().optional().describe("ISO 8601 datetime to schedule the job (max 60 minutes in the future). If omitted, queued for immediate execution."),
-      meta: z.record(z.string(), z.unknown()).optional().describe("Arbitrary key-value metadata to attach to the job (not used by Gorgias)"),
+      scheduled_datetime: z.string().nullable().optional().describe("ISO 8601 datetime to schedule the job (max 60 minutes in the future). If omitted or null, queued for immediate execution."),
+      meta: z.record(z.string(), z.unknown()).nullable().optional().describe("Arbitrary key-value metadata to attach to the job (not used by Gorgias). Pass null to clear."),
       params: z.object({
         apply_and_close: z.boolean().optional().describe("If true, applies the macro and closes the ticket simultaneously. Used with applyMacro type."),
         macro_id: idSchema.optional().describe("ID of the macro to apply. Used with applyMacro type."),
@@ -53,8 +53,8 @@ export function registerJobTools(server: McpServer, client: GorgiasClient) {
           filters: z.string().describe("Filter expression string, e.g. 'eq(ticket.status, \"open\")'"),
         }).optional().describe("Inline view definition used to select tickets."),
         updates: z.record(z.string(), z.unknown()).optional().describe("Key-value map of ticket fields to update. Used with updateTicket type. Example: {\"status\": \"open\"}."),
-        start_datetime: z.string().optional().describe("ISO 8601 start of datetime range for ticket selection."),
-        end_datetime: z.string().optional().describe("ISO 8601 end of datetime range for ticket selection."),
+        start_datetime: z.string().nullable().optional().describe("ISO 8601 start of datetime range for ticket selection."),
+        end_datetime: z.string().nullable().optional().describe("ISO 8601 end of datetime range for ticket selection."),
         url: z.string().optional().describe("URL pointing to an external file (e.g. CSV) to import. Used with importMacro type."),
         context: z.object({
           channel_connection_external_ids: z.array(z.string()).optional().describe("List of channel connection external IDs to scope the job."),

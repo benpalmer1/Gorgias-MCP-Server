@@ -107,7 +107,7 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
         }).optional().describe("The data type definition and input settings"),
         description: z.string().max(1024).nullable().optional().describe("A human-readable description (max 1024 characters)"),
         external_id: z.string().nullable().optional().describe("ID of the custom field in a foreign system"),
-        priority: z.number().min(0).max(5000).optional().describe("Controls display order (0–5000)"),
+        priority: z.number().min(0).max(5000).nullable().optional().describe("Controls display order (0–5000)"),
         required: z.boolean().optional().describe("Whether this field must be filled in by agents"),
         managed_type: z.enum([
           "contact_reason", "product", "resolution", "ai_intent", "ai_outcome",
