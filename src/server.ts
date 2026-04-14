@@ -118,7 +118,11 @@ export function createGorgiasServer(config: GorgiasServerConfig): McpServer {
 }
 
 // Re-export types consumers may need
-export type { AccessLevel } from "./access-control.js";
+export type { AccessLevel, AccessFilterStats } from "./access-control.js";
 export type { GorgiasClientConfig } from "./client.js";
-export { isToolAllowed, AGENT_WRITE_TOOLS } from "./access-control.js";
+export {
+  isToolAllowed,
+  AGENT_WRITE_TOOLS,
+  getAccessFilterStats,
+} from "./access-control.js";
 export { GorgiasError, GorgiasApiError } from "./errors.js";

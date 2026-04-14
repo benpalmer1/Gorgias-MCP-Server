@@ -8,10 +8,16 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
   // --- List Users ---
   server.registerTool("gorgias_list_users", {
     title: "List Users",
-    description: "GET /api/users — List all users, ordered alphabetically by name, with cursor-based pagination.",
+    description: "GET /api/users — List users with cursor-based pagination. Supports filtering by email, external ID, role, search term, and ordering.",
     inputSchema: {
       cursor: z.string().optional().describe("Pagination cursor from a previous response (meta.next_cursor or meta.prev_cursor)"),
-      limit: z.number().optional().describe("Maximum number of users to return per page"),
+      limit: z.number().int().min(1).max(100).optional().describe("Maximum number of users to return per page (default: 30, max: 100)"),
+      email: z.string().email().optional().describe("Filter by exact email address."),
+      external_id: z.string().optional().describe("Filter by external_id (foreign system identifier)."),
+      search: z.string().optional().describe("Free-text search against user name and email."),
+      available_first: z.boolean().optional().describe("If true, prioritise currently available users in the result order."),
+      roles: z.array(z.string()).optional().describe("Filter by role names. Common values: 'admin', 'agent'."),
+      order_by: z.string().optional().describe("Sort order, e.g. 'name:asc', 'email:desc', 'created_datetime:desc'."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -102,16 +108,9 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 
-  // --- Delete Users (Bulk) ---
-  server.registerTool("gorgias_delete_users", {
-    title: "Delete Users (Bulk)",
-    description: "DELETE /api/users — Bulk delete multiple users by ID. Deletion is permanent and irreversible.",
-    inputSchema: {
-      ids: z.array(z.number()).min(1).describe("Array of user IDs to delete"),
-    },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
-  }, safeHandler(async (args) => {
-    const result = await client.delete("/api/users", args);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-  }));
+  // NOTE: There is intentionally no `gorgias_delete_users` (bulk) tool.
+  // The Gorgias REST API does not expose a bulk DELETE on /api/users — only
+  // the single-id form DELETE /api/users/{id} is documented. Although the
+  // parallel /api/customers endpoint does support bulk deletion, /api/users
+  // does not. Users must be deleted one at a time via gorgias_delete_user.
 }

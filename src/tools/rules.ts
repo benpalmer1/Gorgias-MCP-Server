@@ -55,11 +55,11 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
   // --- Update Rule ---
   server.registerTool("gorgias_update_rule", {
     title: "Update Rule",
-    description: "PUT /api/rules/{id} — Full-replacement update of a rule by ID. This is a PUT endpoint, so all fields should be included; any omitted fields may be reset to defaults.",
+    description: "PUT /api/rules/{id} — Update a rule by ID. All body fields are optional; only the fields you supply will be modified. Common partial updates: toggle deactivated_datetime, bump priority, edit description without resending name+code.",
     inputSchema: {
       id: z.number().describe("The unique ID of the rule to update"),
-      name: z.string().describe("The name of the rule"),
-      code: z.string().describe("The logic of the rule as JavaScript code"),
+      name: z.string().optional().describe("The name of the rule"),
+      code: z.string().optional().describe("The logic of the rule as JavaScript code"),
       code_ast: z.record(z.string(), z.unknown()).optional().describe("The logic of the rule as an ESTree AST representation (auto-generated from code if not specified)"),
       description: z.string().nullable().optional().describe("A human-readable description of the rule"),
       event_types: z.string().optional().describe("Comma-separated list of events that trigger this rule. Allowed values: ticket-created, ticket-updated, ticket-message-created, ticket-assigned, ticket-self-unsnoozed, satisfaction-survey-responded"),
@@ -97,7 +97,9 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
     },
     annotations: { readOnlyHint: false, openWorldHint: true },
   }, safeHandler(async (args) => {
-    const result = await client.post("/api/rules/priorities", args.priorities);
+    // The Gorgias API expects the body to be wrapped in a { priorities: [...] }
+    // object, NOT the bare array. Sending the array alone produces a 400.
+    const result = await client.post("/api/rules/priorities", { priorities: args.priorities });
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 }

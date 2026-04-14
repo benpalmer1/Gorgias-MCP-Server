@@ -8,7 +8,7 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
   // --- List Customers ---
   server.registerTool("gorgias_list_customers", {
     title: "List Customers",
-    description: "GET /api/customers — List customers, paginated and ordered by name. Supports filtering by email, external ID, name, language, and timezone.",
+    description: "GET /api/customers — List customers, paginated and ordered by name. Supports filtering by email, external ID, name, language, timezone, view, channel type, and channel address.",
     inputSchema: {
       cursor: z.string().optional().describe("Pagination cursor from a previous response. Omit to retrieve the first page."),
       email: z.string().nullable().optional().describe("Filter by the primary email address of the customer."),
@@ -18,6 +18,9 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
       name: z.string().nullable().optional().describe("Filter by the full name of the customer."),
       order_by: z.enum(["created_datetime:asc", "created_datetime:desc", "updated_datetime:asc", "updated_datetime:desc"]).optional().describe("Attribute used to order customers (default: 'created_datetime:desc')."),
       timezone: z.string().nullable().optional().describe("Filter by the customer's preferred timezone (IANA timezone name, e.g. 'America/New_York')."),
+      view_id: z.number().int().min(1).optional().describe("Filter by saved view ID."),
+      channel_type: z.string().optional().describe("Filter by customer channel type (e.g. 'email', 'phone', 'sms', 'chat', 'facebook')."),
+      channel_address: z.string().max(320).optional().describe("Filter by exact channel address. Typically used together with channel_type."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -140,7 +143,9 @@ export function registerCustomerTools(server: McpServer, client: GorgiasClient) 
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ source_id, target_id, ...body }) => {
-    const result = await client.put(`/api/customers/merge`, { ...body, source_id, target_id });
+    // source_id and target_id are query parameters, NOT body fields, per the
+    // Gorgias REST API spec for PUT /api/customers/merge.
+    const result = await client.put(`/api/customers/merge`, body, { source_id, target_id });
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }));
 

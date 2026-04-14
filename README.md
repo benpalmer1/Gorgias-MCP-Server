@@ -6,7 +6,7 @@ An MCP server that exposes the full Gorgias helpdesk API to AI assistants.
 
 ## What is this?
 
-Gorgias MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants -- Claude, and any other MCP-compatible client -- complete access to the Gorgias helpdesk platform. It ships with **114 tools**: 3 high-level "smart" tools that handle the most common workflows, plus 111 raw API tools covering every Gorgias REST endpoint.
+Gorgias MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants -- Claude, and any other MCP-compatible client -- complete access to the Gorgias helpdesk platform. It ships with **113 tools**: 3 high-level "smart" tools that handle the most common workflows, plus 110 raw API tools covering every Gorgias REST endpoint.
 
 Connect it to Claude Desktop (or any MCP client) and you can search tickets, read conversations, pull analytics, manage customers, and operate your entire helpdesk through natural language.
 
@@ -53,13 +53,13 @@ The three smart tools are the primary interface. They compose multiple API calls
 | `gorgias_smart_get_ticket` | Retrieves a ticket with its full conversation thread. Fetches ticket and messages in parallel, sorts chronologically, and projects to a compact format stripped to essential fields. |
 | `gorgias_smart_stats` | Analytics with automatic defaults, input validation, dimension resolution, and agent name-to-ID resolution. Covers volume, performance, quality, automation, voice, and breakdown scopes. |
 
-These handle the common 80% of use cases. The 111 raw tools provide direct API access for everything else -- bulk operations, custom field management, rule configuration, and more.
+These handle the common 80% of use cases. The 110 raw tools provide direct API access for everything else -- bulk operations, custom field management, rule configuration, and more.
 
 ---
 
 ## Installation
 
-Requires Node.js 18 or later.
+Requires Node.js 20 or later. (Node 18 reached end-of-life in April 2025.)
 
 ```bash
 npm install -g gorgias-mcp-server
@@ -100,7 +100,7 @@ Control which tools are exposed to the AI with `GORGIAS_ACCESS_LEVEL`:
 |-------|-------|----------|
 | `readonly` | 52 tools (all read/search/list/smart tools) | Analytics bots, dashboards, monitoring |
 | `agent` | 62 tools (readonly + reply, close, tag, reassign) | Customer-facing support chatbots |
-| `admin` | All 114 tools (default) | Internal admin tools, full API access |
+| `admin` | All 113 tools (default) | Internal admin tools, full API access |
 
 ```bash
 GORGIAS_ACCESS_LEVEL=readonly   # Only read operations exposed
@@ -141,6 +141,57 @@ The config file is located at:
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Linux**: `~/.config/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Claude Code (CLI)
+
+Add the server to your project using `claude mcp add-json`:
+
+```bash
+claude mcp add-json gorgias '{
+  "command": "npx",
+  "args": ["gorgias-mcp-server"],
+  "env": {
+    "GORGIAS_DOMAIN": "mycompany",
+    "GORGIAS_EMAIL": "admin@mycompany.com",
+    "GORGIAS_API_KEY": "your-api-key-here",
+    "GORGIAS_ACCESS_LEVEL": "readonly"
+  }
+}' -s project
+```
+
+This creates a `.mcp.json` file in the project root. You can also add it at user scope with `-s user`.
+
+Alternatively, create `.mcp.json` manually in your project root:
+
+```json
+{
+  "mcpServers": {
+    "gorgias": {
+      "command": "npx",
+      "args": ["gorgias-mcp-server"],
+      "env": {
+        "GORGIAS_DOMAIN": "mycompany",
+        "GORGIAS_EMAIL": "admin@mycompany.com",
+        "GORGIAS_API_KEY": "your-api-key-here",
+        "GORGIAS_ACCESS_LEVEL": "readonly"
+      }
+    }
+  }
+}
+```
+
+> **Note:** You can also use `claude mcp add` directly. All flags (`--transport`, `--env`, `--scope`) must come **before** the server name, and `--` separates the name from the command:
+> ```bash
+> claude mcp add --transport stdio --scope project \
+>   --env GORGIAS_DOMAIN=mycompany \
+>   --env GORGIAS_EMAIL=admin@mycompany.com \
+>   --env GORGIAS_API_KEY=your-api-key-here \
+>   --env GORGIAS_ACCESS_LEVEL=readonly \
+>   gorgias -- npx gorgias-mcp-server
+> ```
+> For most users, `claude mcp add-json` (shown above) is simpler.
+
+> **Note:** If you add the MCP server mid-session, you may need to restart Claude Code (`/quit` and relaunch) for the tools to appear. Verify connection with `claude mcp list`.
 
 ### Programmatic Usage (Web Apps & Chatbots)
 
@@ -242,7 +293,7 @@ import {
 
 ## Available Tools
 
-114 tools organised by category:
+113 tools organised by category:
 
 | Category | Count | Description |
 |----------|------:|-------------|
@@ -253,7 +304,7 @@ import {
 | **Tags** | 7 | Full CRUD, bulk delete, and tag merging |
 | **Views** | 7 | Full CRUD; list and search view items |
 | **Statistics & Reporting** | 3 | Retrieve statistics, download statistics, retrieve reporting data |
-| **Users** | 6 | User management and lookup |
+| **Users** | 5 | User management and lookup |
 | **Teams** | 5 | Team management |
 | **Rules** | 6 | Automation rule CRUD and management |
 | **Macros** | 7 | Macro template CRUD and management |
@@ -280,10 +331,47 @@ To customise for other industries (e.g. SaaS, healthcare, finance), edit the `TO
 
 ## Security
 
-- The error sanitiser strips credentials, tokens, and internal URLs from all error messages before they reach the LLM.
-- Access levels (`readonly`, `agent`, `admin`) control which tools are exposed. Start with `readonly` unless write access is needed.
+- The error sanitiser strips credentials, tokens, vendor API key prefixes (Stripe `sk_live_`, Slack `xoxb-`, GitHub `ghp_`, AWS `AKIA…`, etc.), email addresses, internal/loopback IPs, and sensitive filesystem paths from all error messages before they reach the LLM.
+- The HTTP client enforces a 30-second per-request timeout and caps the `Retry-After` header at 60 seconds, so a stalled or misconfigured upstream cannot freeze a tool call.
+- Access levels (`readonly`, `agent`, `admin`) control which tools are exposed. Start with `readonly` unless write access is needed. **The default is `admin` if `GORGIAS_ACCESS_LEVEL` is not set** — explicitly set it for production.
 - In `agent` mode, the AI **can** send customer-facing messages and modify tickets. Make sure this is intentional before enabling it.
 - Customer data (ticket messages, names, email addresses) is passed to the LLM as part of normal MCP operation. If you handle sensitive data, factor this into your compliance review.
+- Reference data (users, tags, views, custom fields, teams) is cached in-process for 10 minutes to reduce API calls. The cache is per-`GorgiasClient` instance and lives in plain process memory. Restart the server to flush.
+- Never commit your `GORGIAS_API_KEY` to source control. Use environment variables or a secret manager.
+
+---
+
+## Troubleshooting
+
+### `Missing required environment variables`
+Set `GORGIAS_DOMAIN`, `GORGIAS_EMAIL`, and `GORGIAS_API_KEY`. The `domain` accepts `mycompany`, `mycompany.gorgias.com`, or `https://mycompany.gorgias.com`.
+
+### `401 Unauthorized` / `Authentication failed`
+- Verify the email matches the user account that created the API key (Settings > REST API).
+- Verify the API key has not been rotated or revoked.
+- Confirm `GORGIAS_DOMAIN` matches the tenant where the key was issued.
+
+### `403 Forbidden`
+- The Gorgias REST API is gated to specific plan tiers. Check your account's plan in the Gorgias admin UI.
+- The user behind the API key may not have permission to access the resource (e.g. some endpoints require admin role).
+
+### `429 Rate limited by Gorgias API`
+The HTTP client automatically retries 429 responses up to 3 times with exponential backoff (1s/2s/4s, plus jitter), honouring the upstream `Retry-After` header capped at 60 seconds. If you still see persistent 429 errors after the built-in retries, you have exceeded the leaky-bucket budget for the tenant — slow down or wait a few minutes.
+
+### Tools not appearing in the MCP client
+- Fully quit and re-launch Claude Desktop or your IDE — most clients only re-read the MCP config on restart.
+- Verify the server actually started by checking the client's MCP logs. The server logs `Gorgias MCP server started — N tools registered (access level: …)` to stderr.
+- Confirm `GORGIAS_ACCESS_LEVEL` is not unintentionally set to `readonly` (which hides every write tool).
+- Check `claude mcp list` (Claude Code CLI) to confirm registration.
+
+### Domain format errors
+Accepted formats: `mycompany`, `mycompany.gorgias.com`, `https://mycompany.gorgias.com`. Plain `http://` is rejected. Whitespace, empty strings, and internal spaces will fail at request time. Only `*.gorgias.com` hosts are intended; pointing the server at an unrelated host is your responsibility.
+
+### `Maximum allowed period size is 366 days` (smart_stats / reporting)
+The Gorgias reporting API enforces a 366-day maximum range per request. Split longer queries into multiple windows.
+
+### Empty or surprisingly small smart_stats results
+The tool caps each query at 100 rows. Multi-agent + daily-granularity queries hit this fast (e.g. 30 days × 4 agents = 120 rows). Coarsen the granularity (`week` or `month`), shorten the date range, or use `gorgias_retrieve_reporting_statistic` for paginated raw access.
 
 ---
 
@@ -300,7 +388,7 @@ To customise for other industries (e.g. SaaS, healthcare, finance), edit the `TO
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0
 
 ### Scripts
 

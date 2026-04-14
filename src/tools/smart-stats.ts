@@ -8,6 +8,7 @@ import {
   DIMENSION_ALIASES,
   BROKEN_SCOPES,
   SCOPE_REQUIRED_FILTERS,
+  TIME_BASED_SCOPES,
   kebabToCamelCase,
   humaniseKey,
   adjustEndDateForExclusive,
@@ -30,7 +31,7 @@ Breakdown: tags, ticket-fields
 Voice: voice-calls, voice-agent-events, voice-calls-summary
 Other: online-time, ticket-sla, knowledge-insights
 
-Broken scopes (return API errors): automation-rate, online-time, voice-agent-events, voice-calls-summary.
+Broken scopes (return API errors): automation-rate, online-time, voice-calls, voice-agent-events, voice-calls-summary.
 
 For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve_statistic.`,
     inputSchema: {
@@ -155,12 +156,21 @@ For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve
       // Extract data rows
       let rows: any[] = result?.data ?? result ?? [];
       if (!Array.isArray(rows)) rows = [];
+      const rawRowCount = rows.length;
 
-      // Filter null rows
+      // Count (do NOT drop) rows where every requested measure is null/undefined.
+      // The previous implementation silently filtered them out, which made
+      // legitimate "zero-activity" buckets (e.g. an agent with no tickets in
+      // the period) invisible. For single-measure scopes like messages-sent
+      // grouped by agentId, this would drop every inactive-agent row and
+      // produce an empty result with no error. We now preserve the rows and
+      // surface the count instead so callers can decide how to present
+      // zero-activity entries.
+      let nullMeasureRowCount = 0;
       if (measures.length > 0) {
-        rows = rows.filter((row: any) => {
-          return measures.some((key: string) => row[key] !== null && row[key] !== undefined);
-        });
+        nullMeasureRowCount = rows.filter((row: any) =>
+          measures.every((key: string) => row[key] === null || row[key] === undefined),
+        ).length;
       }
 
       // Resolve agent IDs to names
@@ -170,31 +180,43 @@ For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve
         const userMap = new Map<number, string>();
         for (const u of users) {
           const user = u as any;
-          if (user.id && user.name) userMap.set(user.id, user.name);
+          if (user.id && user.name) userMap.set(user.id, String(user.name).trim());
         }
         for (const row of rows) {
           if (typeof row.agentId === "number") {
             row.agentName = userMap.get(row.agentId) ?? `Agent ${row.agentId}`;
+          } else {
+            // Pre-seed agentName so column metadata stays consistent across
+            // rows even if rows[0] happens to have a non-numeric agentId.
+            row.agentName = null;
           }
         }
       }
 
-      // Derive column metadata
+      // Derive column metadata as the union of keys across ALL rows so that
+      // sparse fields (e.g. agentName for some rows but not others) still
+      // appear in the column list.
       const columns: Record<string, string> = {};
-      if (rows.length > 0) {
-        for (const key of Object.keys(rows[0])) {
-          columns[key] = humaniseKey(key);
+      for (const row of rows) {
+        for (const key of Object.keys(row)) {
+          if (!(key in columns)) columns[key] = humaniseKey(key);
         }
       }
 
       // Truncation warning
       let hint = `Returned ${rows.length} row(s) for scope '${scope}' from ${args.start_date} to ${args.end_date}.`;
       if (rows.length >= 100) {
-        hint += " WARNING: Results may be truncated at 100 rows. Narrow the date range or add dimensions for more precise data.";
+        hint += " WARNING: Results were capped at 100 rows by this tool and may be truncated. To see more data, do ONE of: (1) shorten the date range; (2) coarsen the granularity (e.g. 'week' or 'month' instead of 'day'); (3) REMOVE dimensions to reduce row cardinality (adding dimensions multiplies rows and makes truncation worse); (4) issue narrower queries and merge client-side. For raw paginated access beyond 100 rows, use gorgias_retrieve_reporting_statistic with limit + cursor.";
+      }
+      if (nullMeasureRowCount > 0) {
+        hint += ` ${nullMeasureRowCount} row(s) have all-null measure values (e.g. agents with zero activity in the period). They are preserved in the response so the LLM can decide how to present them.`;
       }
       hint += " Present data in a table format.";
       if (hasAgentDimension) {
         hint += " Agent names have been resolved from IDs.";
+      }
+      if (TIME_BASED_SCOPES.has(scope)) {
+        hint += " Time values are in seconds.";
       }
       hint += " Bold metric names for readability.";
 
@@ -206,6 +228,8 @@ For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve
         columns,
         data: rows,
         totalRows: rows.length,
+        rawRowCount,
+        nullMeasureRowCount,
         _hint: hint,
       };
 

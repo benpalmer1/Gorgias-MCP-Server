@@ -106,7 +106,7 @@ export const SCOPE_VALID_DIMENSIONS: Record<string, string[]> = {
   "ticket-fields": ["customFieldValue"],
   "voice-calls": ["agentId", "integrationId", "phoneNumberId", "queueId"],
   "voice-agent-events": ["agentId", "integrationId"],
-  "ticket-sla": ["agentId", "channel", "integrationId", "policyId", "storeId", "teamId"],
+  "ticket-sla": ["status"],
   "knowledge-insights": [],
   "voice-calls-summary": ["agentId", "integrationId", "phoneNumberId", "queueId"],
 };
@@ -122,7 +122,7 @@ export const DIMENSION_ALIASES: Record<string, string | null> = {
   "tag": "tagId",
   "store": "storeId",
   "integration": "integrationId",
-  "policy": "policyId",
+  "policy": null, // policyId is not a valid dimension for any current scope
   "phone": "phoneNumberId",
   "queue": "queueId",
   "category": "categoryName",
@@ -138,6 +138,7 @@ export const DIMENSION_ALIASES: Record<string, string | null> = {
 export const BROKEN_SCOPES: Record<string, string> = {
   "automation-rate": "This scope consistently returns server errors from the Gorgias API",
   "online-time": "This scope consistently returns server errors from the Gorgias API",
+  "voice-calls": "This scope consistently returns server errors from the Gorgias API",
   "voice-agent-events": "This scope consistently returns server errors from the Gorgias API",
   "voice-calls-summary": "This scope consistently returns server errors from the Gorgias API",
 };
@@ -153,6 +154,19 @@ export const SCOPE_REQUIRED_FILTERS: Record<string, { filterMember: string; desc
     description: "The 'ticket-fields' scope requires a 'customFieldId' filter specifying which custom field to analyse",
   },
 };
+
+// ---------------------------------------------------------------------------
+// Scopes whose measures return time values in seconds
+// ---------------------------------------------------------------------------
+
+/** Scopes where the primary measures represent durations in seconds. */
+export const TIME_BASED_SCOPES = new Set([
+  "first-response-time",
+  "human-first-response-time",
+  "response-time",
+  "resolution-time",
+  "ticket-handle-time",
+]);
 
 // ---------------------------------------------------------------------------
 // Helper functions

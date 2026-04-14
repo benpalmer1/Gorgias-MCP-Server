@@ -2,7 +2,7 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createGorgiasServer } from "./server.js";
-import { getAccessLevel } from "./access-control.js";
+import { getAccessLevel, getAccessFilterStats } from "./access-control.js";
 
 async function main() {
   const domain = process.env.GORGIAS_DOMAIN;
@@ -35,11 +35,9 @@ async function main() {
     accessLevel,
   });
 
-  const stats = (server as unknown as Record<string, unknown>)._accessFilterStats as
-    | { registeredCount: number; skippedCount: number }
-    | undefined;
+  const stats = getAccessFilterStats(server);
   const toolCountInfo = stats
-    ? ` — ${stats.registeredCount} tools registered, ${stats.skippedCount} skipped`
+    ? ` — ${stats.registeredCount} tools registered${stats.skippedCount > 0 ? `, ${stats.skippedCount} skipped` : ""}`
     : "";
   console.error(`Gorgias MCP server started${toolCountInfo} (access level: ${accessLevel})`);
 
