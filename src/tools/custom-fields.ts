@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, cursorSchema } from "./_id.js";
 
 export function registerCustomFieldTools(server: McpServer, client: GorgiasClient) {
 
@@ -11,7 +12,7 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
     description: "GET /api/custom-fields — Returns a cursor-paginated list of custom fields. Requires object_type to specify which entity's fields to list. Supports filtering by name search and archived status.",
     inputSchema: {
       object_type: z.enum(["Ticket", "Customer"]).describe("Type of entity to list custom fields for: 'Ticket' or 'Customer'"),
-      cursor: z.string().optional().describe("Cursor token for pagination. Use next_cursor or prev_cursor from a previous response."),
+      cursor: cursorSchema.optional().describe("Cursor token for pagination. Use next_cursor or prev_cursor from a previous response."),
       limit: z.number().int().min(1).max(100).optional().describe("Maximum number of custom fields to return per page (1-100, default 30)"),
       order_by: z.enum(["priority:asc", "priority:desc"]).optional().describe("Sort order. Default: 'priority:desc'."),
       search: z.string().optional().describe("Filter custom fields by name (substring match)."),
@@ -28,7 +29,7 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
     title: "Get Custom Field",
     description: "GET /api/custom-fields/{id} — Retrieve a single custom field by its unique ID. Returns the full CustomField object including definition, metadata, and configuration.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the custom field to retrieve"),
+      id: idSchema.describe("The unique ID of the custom field to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -68,7 +69,7 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
     title: "Update Custom Field",
     description: "PUT /api/custom-fields/{id} — Update a single custom field by ID. The three required fields (object_type, label, definition) must always be included even if unchanged. To deactivate a field, set deactivated_datetime to a past ISO 8601 timestamp.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the custom field to update"),
+      id: idSchema.describe("The unique ID of the custom field to update"),
       object_type: z.enum(["Ticket", "Customer"]).describe("Type of entity this custom field applies to (required even if unchanged)"),
       label: z.string().min(1).max(255).describe("The display name of the custom field (required even if unchanged)"),
       definition: z.object({
@@ -97,7 +98,7 @@ export function registerCustomFieldTools(server: McpServer, client: GorgiasClien
     description: "PUT /api/custom-fields — Bulk update multiple custom fields in a single request. Send an array of update objects each containing an id and the fields to change. Only id is required per item; all other fields are optional.",
     inputSchema: {
       fields: z.array(z.object({
-        id: z.number().describe("The ID of the custom field to update (required)"),
+        id: idSchema.describe("The ID of the custom field to update (required)"),
         label: z.string().min(1).max(255).optional().describe("The display name of the custom field"),
         object_type: z.enum(["Ticket", "Customer"]).optional().describe("Type of entity this custom field applies to"),
         definition: z.object({

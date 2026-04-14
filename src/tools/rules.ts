@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, cursorSchema } from "./_id.js";
 
 export function registerRuleTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,7 +11,7 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
     title: "List Rules",
     description: "GET /api/rules — List all rules with cursor-based pagination.",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor from a previous response (value of meta.next_cursor)"),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response (value of meta.next_cursor)"),
       limit: z.number().min(1).max(100).optional().describe("Max results per page (default: 100, max: 100)"),
       order_by: z.string().optional().describe("Sort order, e.g. 'created_datetime:desc' or 'created_datetime:asc'"),
     },
@@ -25,7 +26,7 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
     title: "Get Rule",
     description: "GET /api/rules/{id} — Retrieve a single rule by its unique ID.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the rule to retrieve"),
+      id: idSchema.describe("The unique ID of the rule to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -57,7 +58,7 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
     title: "Update Rule",
     description: "PUT /api/rules/{id} — Update a rule by ID. All body fields are optional; only the fields you supply will be modified. Common partial updates: toggle deactivated_datetime, bump priority, edit description without resending name+code.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the rule to update"),
+      id: idSchema.describe("The unique ID of the rule to update"),
       name: z.string().optional().describe("The name of the rule"),
       code: z.string().optional().describe("The logic of the rule as JavaScript code"),
       code_ast: z.record(z.string(), z.unknown()).optional().describe("The logic of the rule as an ESTree AST representation (auto-generated from code if not specified)"),
@@ -77,7 +78,7 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
     title: "Delete Rule",
     description: "DELETE /api/rules/{id} — Permanently delete a rule by ID. This action is irreversible.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the rule to delete"),
+      id: idSchema.describe("The unique ID of the rule to delete"),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -91,7 +92,7 @@ export function registerRuleTools(server: McpServer, client: GorgiasClient) {
     description: "POST /api/rules/priorities — Batch update the execution priority of multiple rules in a single request.",
     inputSchema: {
       priorities: z.array(z.object({
-        id: z.number().int().describe("The ID of the rule to update"),
+        id: idSchema.describe("The ID of the rule to update"),
         priority: z.number().int().describe("The new execution priority for the rule (higher values execute first)"),
       })).min(1).describe("Array of rule ID and priority pairs to update"),
     },

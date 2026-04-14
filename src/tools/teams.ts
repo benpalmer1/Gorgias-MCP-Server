@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, cursorSchema } from "./_id.js";
 
 export function registerTeamTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,7 +11,7 @@ export function registerTeamTools(server: McpServer, client: GorgiasClient) {
     title: "List Teams",
     description: "GET /api/teams — List teams matching the given parameters, ordered. Returns a plain JSON array of Team objects (not a paginated wrapper with next_cursor).",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor from a previous response to advance to the next page"),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response to advance to the next page"),
       limit: z.number().min(1).max(100).optional().describe("Max results per page (default: 30)"),
       order_by: z.enum([
         "created_datetime:asc",
@@ -30,7 +31,7 @@ export function registerTeamTools(server: McpServer, client: GorgiasClient) {
     title: "Get Team",
     description: "GET /api/teams/{id} — Retrieve a single team by its unique ID. Returns name, description, decoration, members, and timestamps.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the team to retrieve"),
+      id: idSchema.describe("The unique ID of the team to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -49,7 +50,7 @@ export function registerTeamTools(server: McpServer, client: GorgiasClient) {
         emoji: z.string().nullable().optional().describe("A single emoji character displayed before the team name in the UI"),
       }).nullable().optional().describe("Object describing how the team appears on the webpage"),
       members: z.array(z.object({
-        id: z.number().describe("The ID of the user to add to the team"),
+        id: idSchema.describe("The ID of the user to add to the team"),
         name: z.string().nullable().optional().describe("The full name of the user"),
         email: z.string().nullable().optional().describe("The email address of the user (max 320 chars)"),
         meta: z.record(z.string(), z.unknown()).nullable().optional().describe("User-defined JSON metadata field"),
@@ -66,14 +67,14 @@ export function registerTeamTools(server: McpServer, client: GorgiasClient) {
     title: "Update Team",
     description: "PUT /api/teams/{id} — Update an existing team by ID. All fields are optional; only provided fields are updated. The members field performs a full replacement when provided.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the team to update"),
+      id: idSchema.describe("The unique ID of the team to update"),
       name: z.string().min(1).optional().describe("The display name of the team"),
       description: z.string().nullable().optional().describe("A longer description of the team's purpose. Pass null to clear."),
       decoration: z.object({
         emoji: z.string().nullable().optional().describe("A single emoji character displayed before the team name in the UI"),
       }).nullable().optional().describe("Visual display configuration for the team. Pass null to remove decoration."),
       members: z.array(z.object({
-        id: z.number().describe("The ID of the user"),
+        id: idSchema.describe("The ID of the user"),
         name: z.string().nullable().optional().describe("The full name of the user"),
         email: z.string().nullable().optional().describe("The email address of the user (max 320 chars)"),
         meta: z.record(z.string(), z.unknown()).nullable().optional().describe("User-defined JSON metadata field"),
@@ -90,7 +91,7 @@ export function registerTeamTools(server: McpServer, client: GorgiasClient) {
     title: "Delete Team",
     description: "DELETE /api/teams/{id} — Permanently delete a team by ID. Deletion is irreversible. Tickets previously assigned to the team will lose their team assignment.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the team to delete"),
+      id: idSchema.describe("The unique ID of the team to delete"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {

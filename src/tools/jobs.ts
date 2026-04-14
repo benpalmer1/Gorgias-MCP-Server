@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, cursorSchema } from "./_id.js";
 
 export function registerJobTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,7 +11,7 @@ export function registerJobTools(server: McpServer, client: GorgiasClient) {
     title: "List Jobs",
     description: "GET /api/jobs — List all jobs with optional filtering by status/type and cursor-based pagination. Results are ordered by created_datetime descending.",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor from a previous response (opaque Base64 token)"),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response (opaque Base64 token)"),
       limit: z.number().optional().describe("Max number of job records to return per page (default: 30)"),
       order_by: z.enum(["created_datetime:asc", "created_datetime:desc"]).optional().describe("Sort order for results."),
       status: z.enum(["pending", "scheduled", "running", "done", "cancel_requested", "canceled", "errored", "fatal_errored"]).optional().describe("Filter jobs by status"),
@@ -27,7 +28,7 @@ export function registerJobTools(server: McpServer, client: GorgiasClient) {
     title: "Get Job",
     description: "GET /api/jobs/{id} — Retrieve a single job by its unique ID. Returns full Job object including status, type, params, info (progress), and all timestamps.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the job to retrieve"),
+      id: idSchema.describe("The unique ID of the job to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -45,9 +46,9 @@ export function registerJobTools(server: McpServer, client: GorgiasClient) {
       meta: z.record(z.string(), z.unknown()).optional().describe("Arbitrary key-value metadata to attach to the job (not used by Gorgias)"),
       params: z.object({
         apply_and_close: z.boolean().optional().describe("If true, applies the macro and closes the ticket simultaneously. Used with applyMacro type."),
-        macro_id: z.number().optional().describe("ID of the macro to apply. Used with applyMacro type."),
-        ticket_ids: z.array(z.number()).optional().describe("List of specific ticket IDs to operate on."),
-        view_id: z.number().optional().describe("ID of an existing saved view to use for ticket selection."),
+        macro_id: idSchema.optional().describe("ID of the macro to apply. Used with applyMacro type."),
+        ticket_ids: z.array(idSchema).optional().describe("List of specific ticket IDs to operate on."),
+        view_id: idSchema.optional().describe("ID of an existing saved view to use for ticket selection."),
         view: z.object({
           filters: z.string().describe("Filter expression string, e.g. 'eq(ticket.status, \"open\")'"),
         }).optional().describe("Inline view definition used to select tickets."),
@@ -71,13 +72,13 @@ export function registerJobTools(server: McpServer, client: GorgiasClient) {
     title: "Update Job",
     description: "PUT /api/jobs/{id} — Update a job by ID. Allows modification of meta, params, scheduled_datetime, and status. Only fields included in the request body are updated.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the job to update"),
+      id: idSchema.describe("The unique ID of the job to update"),
       meta: z.record(z.string(), z.unknown()).nullable().optional().describe("Metadata associated with the job. Free-form key-value data not used by Gorgias."),
       params: z.object({
         apply_and_close: z.boolean().optional().describe("Whether to close the ticket once the macro is applied. Only applies to applyMacro jobs."),
-        macro_id: z.number().optional().describe("The ID of the macro to apply on the selected tickets. Only applies to applyMacro jobs."),
-        ticket_ids: z.array(z.number()).optional().describe("A list of ticket IDs to be processed by the job."),
-        view_id: z.number().optional().describe("The ID of an existing saved view to use for ticket selection."),
+        macro_id: idSchema.optional().describe("The ID of the macro to apply on the selected tickets. Only applies to applyMacro jobs."),
+        ticket_ids: z.array(idSchema).optional().describe("A list of ticket IDs to be processed by the job."),
+        view_id: idSchema.optional().describe("The ID of an existing saved view to use for ticket selection."),
         view: z.object({
           filters: z.string().describe("Filter expression string, e.g. 'eq(ticket.status, \"open\")'"),
         }).optional().describe("A view-like object used to select the tickets to be processed."),
@@ -103,7 +104,7 @@ export function registerJobTools(server: McpServer, client: GorgiasClient) {
     title: "Cancel Job",
     description: "DELETE /api/jobs/{id} — Cancel a job by ID. Jobs can be canceled at any time, but changes already applied will not be reverted. Returns 204 No Content on success.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the job to cancel"),
+      id: idSchema.describe("The unique ID of the job to cancel"),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {

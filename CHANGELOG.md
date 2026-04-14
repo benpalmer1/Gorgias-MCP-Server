@@ -9,10 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — critical silent data loss (C1, C3)
 
-- **C1: `gorgias_smart_stats` auto-pagination.** The tool was hardcoded to `limit: 100` with no auto-pagination, silently truncating any reporting query that produced more than 100 rows. Now auto-paginates up to `limit` rows (default 1000, max 10000) across multiple upstream pages. A 10-page safety cap converts runaway queries into `isError: true` with a resume cursor. Callers can also pass `cursor` for manual page-by-page control. **Breaking:** the default row cap increased from 100 to 1000 — callers may see more data (and higher token counts) on large queries.
+- **C1: `gorgias_smart_stats` auto-pagination.** The tool was hardcoded to `limit: 100` with no auto-pagination, silently truncating any reporting query that produced more than 100 rows. Now auto-paginates up to `limit` rows (default 100, max 10000) across multiple upstream pages. A 10-page safety cap converts runaway queries into `isError: true` with a resume cursor. Callers can also pass `cursor` for manual page-by-page control. The default limit stays at 100 to keep token budgets sane for chat agents, but callers can now explicitly raise it up to 10000.
 - **M2: `gorgias_smart_stats` aggregate mode.** New `granularity: "none"` option omits time bucketing entirely, collapsing results into a single row per dimension. This is the primary workaround for queries that produce too many time-bucketed rows.
 - **M3: `gorgias_smart_stats` 366-day pre-flight validation.** Date ranges exceeding 366 days are now rejected client-side with an actionable error before the API call is made.
 - **C3: `gorgias_smart_get_ticket` message auto-pagination.** The tool previously fetched only the first page of messages (30 by default, 100 max per page), silently dropping all subsequent messages on long-running tickets. Now auto-paginates up to `max_messages` (default 1000, hard cap 5000). Truncated conversations return `truncated: true` with a clear hint. The `fetchAllPages` helper in `cache.ts` is now exported for reuse.
+
+### Fixed — shared schema helpers (H19, L5, L3)
+
+- **H19: Repo-wide numeric ID coercion.** All resource ID parameters across 20 tool files now use a shared `idSchema` (`z.coerce.number().int().min(1)`) that accepts both numbers and numeric strings from LLM clients. Previously, `z.number()` rejected string-encoded IDs like `"12345"`, breaking nearly every tool call from clients that serialise numbers as strings.
+- **L5: Cursor max-length bound.** All `cursor` parameters now use a shared `cursorSchema` (`z.string().max(512)`) to prevent oversized query strings.
+- **L3: Integer filter enforcement.** `gorgias_list_tickets` filter IDs now enforce `.int()` to reject floats.
+
+### Fixed — security hardening (H18, L4, sanitiser cause walking)
+
+- **H18: SSRF hostname allowlist.** `buildBaseUrl` now validates that the resolved hostname is `*.gorgias.com` before returning. Rejects non-Gorgias hosts, raw IPs, confusable trailing-label bypasses, empty/whitespace inputs, and trailing dots.
+- **L4: Stack-trace regex tightening.** The sanitiser's stack-trace redaction now requires the `(file:line:col)` suffix, preventing false-positive redaction of prose like "At this point the process stopped".
+- **Sanitiser `error.cause` walking.** The error sanitiser now walks the `.cause` chain up to 5 levels deep, extracting and redacting messages from nested errors. Cycle-safe via a `seen` set.
 
 ### Fixed — critical write-path bugs (every fix verified against current Gorgias 2026 docs)
 

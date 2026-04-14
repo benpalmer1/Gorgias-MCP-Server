@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, cursorSchema } from "./_id.js";
 
 export function registerIntegrationTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,7 +11,7 @@ export function registerIntegrationTools(server: McpServer, client: GorgiasClien
     title: "List Integrations",
     description: "GET /api/integrations — List integrations matching the given parameters, paginated. Returns a cursor-based paginated list of Integration objects for the account.",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor from a previous response (value of meta.next_cursor or meta.prev_cursor)"),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response (value of meta.next_cursor or meta.prev_cursor)"),
       limit: z.number().int().optional().describe("Maximum number of integrations to return per page (default: 30)"),
       order_by: z.string().optional().describe("Field and direction to sort results by, e.g. 'created_datetime:desc'"),
       type: z.string().optional().describe("Filter integrations by type (e.g. 'http')"),
@@ -26,7 +27,7 @@ export function registerIntegrationTools(server: McpServer, client: GorgiasClien
     title: "Get Integration",
     description: "GET /api/integrations/{id} — Retrieve a single integration by its ID. Returns the full Integration object including HTTP configuration details for HTTP-type integrations.",
     inputSchema: {
-      id: z.number().int().describe("The ID of the integration to retrieve"),
+      id: idSchema.describe("The ID of the integration to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -61,7 +62,7 @@ export function registerIntegrationTools(server: McpServer, client: GorgiasClien
           "ticket-handed-over": z.boolean().optional().describe("Fires when a ticket is handed over"),
         }).optional().describe("Maps event type names to boolean flags controlling which ticket events trigger the integration"),
       }).optional().describe("HTTP configuration object. Required when type is 'http'"),
-      business_hours_id: z.number().int().nullable().optional().describe("ID of the business hours configuration to associate with this integration. Relevant for phone integrations only. When null, the account's default business hours are used"),
+      business_hours_id: idSchema.nullable().optional().describe("ID of the business hours configuration to associate with this integration. Relevant for phone integrations only. When null, the account's default business hours are used"),
     },
     annotations: { readOnlyHint: false, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -74,7 +75,7 @@ export function registerIntegrationTools(server: McpServer, client: GorgiasClien
     title: "Update Integration",
     description: "PUT /api/integrations/{id} — Update an existing integration by its ID. The request body must include name at minimum. Returns the updated Integration object on success.",
     inputSchema: {
-      id: z.number().int().describe("The ID of the integration to update"),
+      id: idSchema.describe("The ID of the integration to update"),
       name: z.string().describe("Name of the integration (required)"),
       description: z.string().nullable().optional().describe("Human-readable description of the integration"),
       deactivated_datetime: z.string().nullable().optional().describe("When the integration was deactivated (ISO 8601 format). Set to null to reactivate"),
@@ -109,7 +110,7 @@ export function registerIntegrationTools(server: McpServer, client: GorgiasClien
     title: "Delete Integration",
     description: "DELETE /api/integrations/{id} — Delete an integration. Any views that use this integration will be deactivated. Integrations currently used in rules and/or other integrations cannot be deleted.",
     inputSchema: {
-      id: z.number().int().describe("The ID of the integration to delete"),
+      id: idSchema.describe("The ID of the integration to delete"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {

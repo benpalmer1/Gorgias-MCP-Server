@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, idOrZeroSchema, cursorSchema } from "./_id.js";
 
 export function registerWidgetTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,10 +11,10 @@ export function registerWidgetTools(server: McpServer, client: GorgiasClient) {
     title: "List Widgets",
     description: "GET /api/widgets — List all widgets for the account, ordered.",
     inputSchema: {
-      cursor: z.string().optional().describe("Cursor value for cursor-based pagination (use value from a previous response)"),
+      cursor: cursorSchema.optional().describe("Cursor value for cursor-based pagination (use value from a previous response)"),
       limit: z.number().min(1).max(100).optional().describe("Maximum number of widgets to return per page (default: 30)"),
       order_by: z.enum(["created_datetime:asc", "created_datetime:desc", "order:asc", "order:desc"]).optional().describe("Attribute used to order widgets (default: 'created_datetime:desc')"),
-      integration_id: z.number().nullable().optional().describe("The ID of the integration to filter the widgets list by"),
+      integration_id: idSchema.nullable().optional().describe("The ID of the integration to filter the widgets list by"),
       app_id: z.string().nullable().optional().describe("The ID of the 3rd party app to filter the widgets list by"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
@@ -27,7 +28,7 @@ export function registerWidgetTools(server: McpServer, client: GorgiasClient) {
     title: "Get Widget",
     description: "GET /api/widgets/{id} — Retrieve a single widget by its unique ID.",
     inputSchema: {
-      id: z.number().describe("The ID of the widget to retrieve"),
+      id: idSchema.describe("The ID of the widget to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -52,7 +53,7 @@ export function registerWidgetTools(server: McpServer, client: GorgiasClient) {
       type: z.enum(["bigcommerce", "custom", "customer_external_data", "http", "magento2", "recharge", "shopify", "smile", "standalone", "yotpo", "klaviyo", "stripe", "woocommerce"]).describe("Type of data the widget is attached to"),
       context: z.enum(["ticket", "customer", "user"]).optional().describe("The UI context where this widget is displayed (default: 'ticket'). Note: 'user' is deprecated, use 'customer'"),
       order: z.number().min(0).optional().describe("Order of precedence; widgets with lower order appear first (default: 0)"),
-      integration_id: z.number().min(0).nullable().optional().describe("ID of the HTTP integration this widget is attached to. Only for type 'http' widgets"),
+      integration_id: idOrZeroSchema.nullable().optional().describe("ID of the HTTP integration this widget is attached to. Only for type 'http' widgets"),
       app_id: z.string().nullable().optional().describe("ID of the 3rd party app. Used for type 'customer_external_data' widgets"),
       deactivated_datetime: z.string().nullable().optional().describe("ISO 8601 datetime when the widget was deactivated. Set to deactivate on creation"),
     },
@@ -67,10 +68,10 @@ export function registerWidgetTools(server: McpServer, client: GorgiasClient) {
     title: "Update Widget",
     description: "PUT /api/widgets/{id} — Update an existing widget by ID. This is a full-replacement operation. Include all fields you want to retain.",
     inputSchema: {
-      id: z.number().describe("The ID of the widget to update"),
+      id: idSchema.describe("The ID of the widget to update"),
       context: z.enum(["ticket", "customer", "user"]).optional().describe("The UI context where this widget is displayed. Note: 'user' is deprecated, use 'customer'"),
       deactivated_datetime: z.string().nullable().optional().describe("ISO 8601 datetime when the widget was deactivated. Set to null to reactivate"),
-      integration_id: z.number().min(0).nullable().optional().describe("ID of the HTTP integration this widget is attached to. Only for type 'http' widgets"),
+      integration_id: idOrZeroSchema.nullable().optional().describe("ID of the HTTP integration this widget is attached to. Only for type 'http' widgets"),
       app_id: z.string().nullable().optional().describe("ID of the 3rd party app. Used for type 'customer_external_data' widgets"),
       order: z.number().min(0).optional().describe("Order of precedence; widgets with lower order appear first (default: 0)"),
       template: z.object({
@@ -95,7 +96,7 @@ export function registerWidgetTools(server: McpServer, client: GorgiasClient) {
     title: "Delete Widget",
     description: "DELETE /api/widgets/{id} — Permanently delete a widget. This operation is irreversible. Returns 204 No Content on success.",
     inputSchema: {
-      id: z.number().describe("The ID of the widget to delete"),
+      id: idSchema.describe("The ID of the widget to delete"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {

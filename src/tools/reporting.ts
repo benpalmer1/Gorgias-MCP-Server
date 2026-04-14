@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { cursorSchema } from "./_id.js";
 
 export function registerReportingTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,7 +11,7 @@ export function registerReportingTools(server: McpServer, client: GorgiasClient)
     title: "Retrieve Reporting Statistic",
     description: "POST /api/reporting/stats — Low-level reporting API. For easier stats with automatic scope defaults, dimension validation, agent name resolution, and date handling, use gorgias_smart_stats instead. Retrieve analytics reporting statistics data. The request body contains a query object whose structure is determined by the scope field. Supports filtering, grouping by dimensions, selecting measures, time-based analysis, and custom sorting. Available scopes (26 total): tickets-closed (closed ticket stats), tickets-created (created ticket stats), tickets-open (open ticket stats), tickets-replied (replied ticket stats), one-touch-tickets (resolved with one interaction), zero-touch-tickets (resolved without agent interaction), satisfaction-surveys (customer satisfaction survey data), resolution-time (time to resolve tickets), messages-sent (agent messages sent count), first-response-time (time to first agent response including automated), human-first-response-time (time to first human agent response), response-time (overall response time stats), messages-per-ticket (messages per ticket count), ticket-handle-time (agent time handling tickets), online-time (agent online time stats), tags (stats grouped by ticket tags), auto-qa (automated quality assurance scores), messages-received (messages received count), automation-rate (rate of automated interactions), workload-tickets (ticket workload distribution), automated-interactions (automated interaction events), ticket-fields (stats by custom ticket field values), voice-calls (individual voice call records), voice-agent-events (voice call events per agent), ticket-sla (ticket SLA compliance data), knowledge-insights (knowledge base usage insights), voice-calls-summary (aggregated voice call summary stats). Supports cursor-based pagination via query parameters.",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor from a previous response to continue retrieving results."),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response to continue retrieving results."),
       limit: z.number().min(1).max(10000).optional().describe("Maximum number of analytics results to return (default: 30, max: 10000)."),
       query: z.object({
         scope: z.enum([

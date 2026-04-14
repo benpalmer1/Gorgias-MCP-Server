@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, idOrZeroSchema, cursorSchema } from "./_id.js";
 
 export function registerUserTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,7 +11,7 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
     title: "List Users",
     description: "GET /api/users — List users with cursor-based pagination. Supports filtering by email, external ID, role, search term, and ordering.",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor from a previous response (meta.next_cursor or meta.prev_cursor)"),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response (meta.next_cursor or meta.prev_cursor)"),
       limit: z.number().int().min(1).max(100).optional().describe("Maximum number of users to return per page (default: 30, max: 100)"),
       email: z.string().email().optional().describe("Filter by exact email address."),
       external_id: z.string().optional().describe("Filter by external_id (foreign system identifier)."),
@@ -30,7 +31,7 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
     title: "Get User",
     description: "GET /api/users/{id} — Retrieve a single user by ID. Use id=0 to retrieve the currently authenticated user.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the user to retrieve. Use 0 to retrieve the currently authenticated user."),
+      id: idOrZeroSchema.describe("The unique ID of the user to retrieve. Use 0 to retrieve the currently authenticated user."),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -69,7 +70,7 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
     title: "Update User",
     description: "PUT /api/users/{id} — Update an existing user by ID. Only include fields to modify. Use id=0 to update the currently authenticated user.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the user to update. Use 0 to update the currently authenticated user."),
+      id: idOrZeroSchema.describe("The unique ID of the user to update. Use 0 to update the currently authenticated user."),
       bio: z.string().nullable().optional().describe("Short biography of the user. Pass null to clear."),
       country: z.string().nullable().optional().describe("Country of the user as ISO 3166-1 alpha-2 code. Pass null to clear."),
       email: z.string().email().optional().describe("Email address of the user. Requires password_confirmation when changing."),
@@ -100,7 +101,7 @@ export function registerUserTools(server: McpServer, client: GorgiasClient) {
     title: "Delete User",
     description: "DELETE /api/users/{id} — Permanently delete a single user by ID. Deletion is irreversible.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the user to delete"),
+      id: idSchema.describe("The unique ID of the user to delete"),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {

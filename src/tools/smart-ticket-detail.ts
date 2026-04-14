@@ -6,6 +6,7 @@ import { sanitiseErrorForLLM } from "../error-sanitiser.js";
 import { GorgiasApiError } from "../errors.js";
 import { safeHandler } from "../tool-handler.js";
 import { fetchAllPages } from "../cache.js";
+import { idSchema } from "./_id.js";
 
 const DEFAULT_MAX_MESSAGES = 1000;
 const HARD_CAP_MAX_MESSAGES = 5000;
@@ -20,7 +21,7 @@ export function registerSmartTicketDetailTools(server: McpServer, client: Gorgia
       "Messages are sorted chronologically (oldest first). Use gorgias_smart_search to find tickets first. " +
       "For raw API data, use gorgias_get_ticket instead.",
     inputSchema: {
-      id: z.number().int().min(1).describe("The unique ID of the ticket to retrieve with its full conversation"),
+      id: idSchema.describe("The unique ID of the ticket to retrieve with its full conversation"),
       max_messages: z.number().int().min(1).max(HARD_CAP_MAX_MESSAGES).optional().describe(
         `Maximum number of messages to fetch (default ${DEFAULT_MAX_MESSAGES}, hard cap ${HARD_CAP_MAX_MESSAGES}). ` +
         `Long-running tickets with more messages than this cap will return truncated=true. ` +

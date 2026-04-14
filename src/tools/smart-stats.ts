@@ -18,6 +18,7 @@ import {
 import { getCachedUsers } from "../cache.js";
 import { sanitiseErrorForLLM } from "../error-sanitiser.js";
 import { safeHandler } from "../tool-handler.js";
+import { cursorSchema } from "./_id.js";
 
 export function registerSmartStatsTools(server: McpServer, client: GorgiasClient): void {
   server.registerTool("gorgias_smart_stats", {
@@ -52,13 +53,13 @@ For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve
       measures: z.array(z.string()).optional().describe("Specific measures to return. Defaults are auto-selected per scope if omitted."),
       filters: z.array(z.record(z.string(), z.unknown())).optional().describe("Additional filter objects [{member, operator, values}]"),
       limit: z.number().int().min(1).max(10000).optional().describe(
-        "Maximum number of rows to return after auto-pagination (default: 1000, max: 10000). " +
+        "Maximum number of rows to return after auto-pagination (default: 100, max: 10000). " +
         "The tool fetches upstream pages of up to 1000 rows each and accumulates results " +
         "until this limit is reached or the upstream runs out of data. For queries that " +
-        "would produce far more than 1000 rows, prefer 'granularity: \"none\"' (aggregate " +
+        "would produce far more than 100 rows, prefer 'granularity: \"none\"' (aggregate " +
         "mode) over raising this limit.",
       ),
-      cursor: z.string().optional().describe(
+      cursor: cursorSchema.optional().describe(
         "Advanced: opaque pagination cursor from a previous response's nextCursor field. " +
         "When supplied, the tool fetches a single page and returns its rows + the next cursor. " +
         "Auto-pagination is disabled in this mode — the caller drives the loop.",
@@ -189,7 +190,7 @@ For raw API access, use gorgias_retrieve_reporting_statistic or gorgias_retrieve
       }
 
       // C1: Auto-pagination
-      const requestedLimit = args.limit ?? 1000;
+      const requestedLimit = args.limit ?? 100;
       const PAGE_SIZE = Math.min(requestedLimit, 1000);
       const SAFETY_CAP_PAGES = 10;
       const singlePageMode = args.cursor !== undefined;

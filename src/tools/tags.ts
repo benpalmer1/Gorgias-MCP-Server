@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { GorgiasClient } from "../client.js";
 import { safeHandler } from "../tool-handler.js";
+import { idSchema, cursorSchema } from "./_id.js";
 
 export function registerTagTools(server: McpServer, client: GorgiasClient) {
 
@@ -10,7 +11,7 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
     title: "List Tags",
     description: "GET /api/tags — List all tags with optional filtering and cursor-based pagination.",
     inputSchema: {
-      cursor: z.string().optional().describe("Pagination cursor from a previous response"),
+      cursor: cursorSchema.optional().describe("Pagination cursor from a previous response"),
       limit: z.number().min(1).max(100).optional().describe("Max results per page (default: 30)"),
       order_by: z.string().optional().describe("Sort order, e.g. 'created_datetime:desc'"),
       search: z.string().optional().describe("Case-insensitive search on tag names"),
@@ -26,7 +27,7 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
     title: "Get Tag",
     description: "GET /api/tags/{id} — Retrieve a single tag by its unique ID. Returns name, description, decoration, usage count, and timestamps.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the tag to retrieve"),
+      id: idSchema.describe("The unique ID of the tag to retrieve"),
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -56,7 +57,7 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
     title: "Update Tag",
     description: "PUT /api/tags/{id} — Update an existing tag by ID.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the tag to update"),
+      id: idSchema.describe("The unique ID of the tag to update"),
       name: z.string().min(1).max(256).optional().describe("New name for the tag"),
       description: z.string().max(1024).nullable().optional().describe("New description"),
       decoration: z.object({
@@ -74,7 +75,7 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
     title: "Delete Tag",
     description: "DELETE /api/tags/{id} — Permanently delete a single tag. Views using this tag will be deactivated. Tags used in macros/rules cannot be deleted.",
     inputSchema: {
-      id: z.number().describe("The unique ID of the tag to delete"),
+      id: idSchema.describe("The unique ID of the tag to delete"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ id }) => {
@@ -87,7 +88,7 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
     title: "Delete Tags (Bulk)",
     description: "DELETE /api/tags — Bulk delete multiple tags by ID. Views using deleted tags will be deactivated. Tags used in macros/rules cannot be deleted.",
     inputSchema: {
-      ids: z.array(z.number()).min(1).describe("Array of tag IDs to delete"),
+      ids: z.array(idSchema).min(1).describe("Array of tag IDs to delete"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async (args) => {
@@ -100,8 +101,8 @@ export function registerTagTools(server: McpServer, client: GorgiasClient) {
     title: "Merge Tags",
     description: "PUT /api/tags/{destination_tag_id}/merge — Merge one or more source tags into a destination tag. Source tags are deleted after merge.",
     inputSchema: {
-      destination_tag_id: z.number().describe("The ID of the tag to merge into (destination)"),
-      source_tags_ids: z.array(z.number()).min(1).describe("Array of source tag IDs to merge into the destination"),
+      destination_tag_id: idSchema.describe("The ID of the tag to merge into (destination)"),
+      source_tags_ids: z.array(idSchema).min(1).describe("Array of source tag IDs to merge into the destination"),
     },
     annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true, openWorldHint: true },
   }, safeHandler(async ({ destination_tag_id, ...body }) => {

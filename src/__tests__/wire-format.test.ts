@@ -715,9 +715,9 @@ describe("custom_fields managed_type enum", () => {
 describe("smart_stats truncation hint", () => {
   it("does NOT recommend 'add dimensions' (which would make truncation worse)", async () => {
     const { server, tools } = makeStubServer();
-    // Build a fake API response with exactly 1000 rows so the truncation
-    // branch fires (default limit is now 1000).
-    const fakeRows = Array.from({ length: 1000 }, (_, i) => ({
+    // Build a fake API response with exactly 100 rows so the truncation
+    // branch fires (default limit is 100).
+    const fakeRows = Array.from({ length: 100 }, (_, i) => ({
       agentId: i + 1,
       ticketCount: i + 1,
     }));
@@ -784,10 +784,10 @@ describe("C1: smart_stats auto-pagination", () => {
     expect(json.nextCursor).toBeNull();
   });
 
-  it("C1.2: default limit auto-paginates and trims to 1000", async () => {
+  it("C1.2: default limit auto-paginates and trims to 100", async () => {
     const { server, tools } = makeStubServer();
-    const page1 = Array.from({ length: 1000 }, (_, i) => ({ id: i }));
-    const page2 = Array.from({ length: 50 }, (_, i) => ({ id: 1000 + i }));
+    const page1 = Array.from({ length: 100 }, (_, i) => ({ id: i }));
+    const page2 = Array.from({ length: 50 }, (_, i) => ({ id: 100 + i }));
     const { client } = makePaginatedClient([
       { data: page1, nextCursor: "abc" },
       { data: page2, nextCursor: null },
@@ -798,8 +798,8 @@ describe("C1: smart_stats auto-pagination", () => {
       scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
     });
     const json = await getResponseJson(result);
-    // Default limit 1000, first page already has 1000 rows → stops
-    expect((json.data as unknown[]).length).toBe(1000);
+    // Default limit 100, first page already has 100 rows → stops
+    expect((json.data as unknown[]).length).toBe(100);
     expect(json.pagesFetched).toBe(1);
   });
 
@@ -955,7 +955,7 @@ describe("C1: smart_stats auto-pagination", () => {
 
   it("C1.11: _hint never contains 'add dimensions' (regression guard)", async () => {
     const { server, tools } = makeStubServer();
-    const fakeRows = Array.from({ length: 1000 }, (_, i) => ({ id: i, ticketCount: i }));
+    const fakeRows = Array.from({ length: 100 }, (_, i) => ({ id: i, ticketCount: i }));
     const { client } = makePaginatedClient([{ data: fakeRows, nextCursor: null }]);
     registerSmartStatsTools(server as never, client);
 
@@ -968,7 +968,7 @@ describe("C1: smart_stats auto-pagination", () => {
 
   it("C1.12: _hint mentions granularity: none when limit is reached", async () => {
     const { server, tools } = makeStubServer();
-    const fakeRows = Array.from({ length: 1000 }, (_, i) => ({ id: i, ticketCount: i }));
+    const fakeRows = Array.from({ length: 100 }, (_, i) => ({ id: i, ticketCount: i }));
     const { client } = makePaginatedClient([{ data: fakeRows, nextCursor: "more" }]);
     registerSmartStatsTools(server as never, client);
 
@@ -1008,9 +1008,9 @@ describe("C1: smart_stats auto-pagination", () => {
     expect((shape.limit as z.ZodTypeAny).safeParse(-1).success).toBe(false);
   });
 
-  it("C1.16: legacy callers (no limit) get up to 1000 rows", async () => {
+  it("C1.16: legacy callers (no limit) still get up to 100 rows, but auto-paginate", async () => {
     const { server, tools } = makeStubServer();
-    const fakeRows = Array.from({ length: 500 }, (_, i) => ({ id: i, ticketCount: i }));
+    const fakeRows = Array.from({ length: 80 }, (_, i) => ({ id: i, ticketCount: i }));
     const { client } = makePaginatedClient([{ data: fakeRows, nextCursor: null }]);
     registerSmartStatsTools(server as never, client);
 
@@ -1018,8 +1018,8 @@ describe("C1: smart_stats auto-pagination", () => {
       scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
     });
     const json = await getResponseJson(result);
-    // 500 rows returned in full — no longer capped at 100
-    expect((json.data as unknown[]).length).toBe(500);
+    // 80 rows returned in full — default cap is 100, auto-pagination available
+    expect((json.data as unknown[]).length).toBe(80);
   });
 });
 
