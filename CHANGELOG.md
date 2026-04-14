@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — critical silent data loss (C1, C3)
+
+- **C1: `gorgias_smart_stats` auto-pagination.** The tool was hardcoded to `limit: 100` with no auto-pagination, silently truncating any reporting query that produced more than 100 rows. Now auto-paginates up to `limit` rows (default 1000, max 10000) across multiple upstream pages. A 10-page safety cap converts runaway queries into `isError: true` with a resume cursor. Callers can also pass `cursor` for manual page-by-page control. **Breaking:** the default row cap increased from 100 to 1000 — callers may see more data (and higher token counts) on large queries.
+- **M2: `gorgias_smart_stats` aggregate mode.** New `granularity: "none"` option omits time bucketing entirely, collapsing results into a single row per dimension. This is the primary workaround for queries that produce too many time-bucketed rows.
+- **M3: `gorgias_smart_stats` 366-day pre-flight validation.** Date ranges exceeding 366 days are now rejected client-side with an actionable error before the API call is made.
+- **C3: `gorgias_smart_get_ticket` message auto-pagination.** The tool previously fetched only the first page of messages (30 by default, 100 max per page), silently dropping all subsequent messages on long-running tickets. Now auto-paginates up to `max_messages` (default 1000, hard cap 5000). Truncated conversations return `truncated: true` with a clear hint. The `fetchAllPages` helper in `cache.ts` is now exported for reuse.
+
 ### Fixed — critical write-path bugs (every fix verified against current Gorgias 2026 docs)
 
 - **`gorgias_merge_customers`** now sends `source_id`/`target_id` as **query parameters** instead of body fields, matching the actual Gorgias spec for `PUT /api/customers/merge`. Every previous merge call would have failed with a missing-required-parameter error.

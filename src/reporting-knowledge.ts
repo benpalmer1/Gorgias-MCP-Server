@@ -199,6 +199,23 @@ export function humaniseKey(key: string): string {
     .join(" ");
 }
 
+// ---------------------------------------------------------------------------
+// Date range validation
+// ---------------------------------------------------------------------------
+
+/** Maximum number of days the Gorgias reporting API accepts in a single query. */
+export const MAX_PERIOD_DAYS = 366;
+
+/**
+ * Compute the inclusive period length in whole days between two YYYY-MM-DD dates.
+ * Same-date → 1; one-day gap → 2.
+ */
+export function periodLengthDays(startDate: string, endDate: string): number {
+  const startMs = Date.parse(`${startDate}T00:00:00Z`);
+  const endMs = Date.parse(`${endDate}T00:00:00Z`);
+  return Math.floor((endMs - startMs) / 86_400_000) + 1;
+}
+
 /** Add 1 day to an ISO date string for exclusive end-date adjustment. */
 export function adjustEndDateForExclusive(dateStr: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {

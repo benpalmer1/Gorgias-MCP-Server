@@ -30,6 +30,7 @@ import { registerUserTools } from "../tools/users.js";
 import { registerVoiceCallTools } from "../tools/voice-calls.js";
 import { registerEventTools } from "../tools/events.js";
 import { registerCustomFieldTools } from "../tools/custom-fields.js";
+import { registerSmartTicketDetailTools } from "../tools/smart-ticket-detail.js";
 import type { GorgiasClient } from "../client.js";
 
 // ---------------------------------------------------------------------------
@@ -714,9 +715,9 @@ describe("custom_fields managed_type enum", () => {
 describe("smart_stats truncation hint", () => {
   it("does NOT recommend 'add dimensions' (which would make truncation worse)", async () => {
     const { server, tools } = makeStubServer();
-    // Build a fake API response with exactly 100 rows so the truncation
-    // branch fires.
-    const fakeRows = Array.from({ length: 100 }, (_, i) => ({
+    // Build a fake API response with exactly 1000 rows so the truncation
+    // branch fires (default limit is now 1000).
+    const fakeRows = Array.from({ length: 1000 }, (_, i) => ({
       agentId: i + 1,
       ticketCount: i + 1,
     }));
@@ -731,9 +732,660 @@ describe("smart_stats truncation hint", () => {
     });
     const json = await getResponseJson(result);
     const hint = String(json._hint ?? "");
-    expect(hint).toMatch(/truncat/i);
+    expect(hint).toMatch(/truncat|capped/i);
     expect(hint).not.toMatch(/add dimensions for more precise/i);
     // Should mention removing dimensions or coarsening granularity instead
-    expect(hint.toLowerCase()).toMatch(/remove dimensions|coarsen|narrower/);
+    expect(hint.toLowerCase()).toMatch(/remove dimensions|coarsen|granularity/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B1 — C1: smart_stats auto-pagination
+// ---------------------------------------------------------------------------
+
+describe("C1: smart_stats auto-pagination", () => {
+  function makePaginatedClient(pages: Array<{ data: unknown[]; nextCursor?: string | null }>) {
+    const calls: RecordedCall[] = [];
+    let pageIdx = 0;
+    const stub = {
+      async get(path: string, query?: Record<string, unknown>) {
+        calls.push({ method: "GET", path, query });
+        return { data: [] };
+      },
+      async post(path: string, body?: unknown, query?: Record<string, unknown>) {
+        calls.push({ method: "POST", path, body, query });
+        const page = pages[pageIdx++];
+        if (!page) return { data: [] };
+        return {
+          data: page.data,
+          meta: { next_cursor: page.nextCursor ?? null },
+        };
+      },
+      async put() { return {}; },
+      async delete() { return {}; },
+      async request() { throw new Error("not implemented"); },
+      async search() { return []; },
+    } as unknown as GorgiasClient;
+    return { client: stub, calls };
+  }
+
+  it("C1.1: default limit returns single page when upstream has no cursor", async () => {
+    const { server, tools } = makeStubServer();
+    const rows = Array.from({ length: 50 }, (_, i) => ({ id: i, ticketCount: i }));
+    const { client } = makePaginatedClient([{ data: rows, nextCursor: null }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+    });
+    const json = await getResponseJson(result);
+    expect((json.data as unknown[]).length).toBe(50);
+    expect(json.pagesFetched).toBe(1);
+    expect(json.nextCursor).toBeNull();
+  });
+
+  it("C1.2: default limit auto-paginates and trims to 1000", async () => {
+    const { server, tools } = makeStubServer();
+    const page1 = Array.from({ length: 1000 }, (_, i) => ({ id: i }));
+    const page2 = Array.from({ length: 50 }, (_, i) => ({ id: 1000 + i }));
+    const { client } = makePaginatedClient([
+      { data: page1, nextCursor: "abc" },
+      { data: page2, nextCursor: null },
+    ]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+    });
+    const json = await getResponseJson(result);
+    // Default limit 1000, first page already has 1000 rows → stops
+    expect((json.data as unknown[]).length).toBe(1000);
+    expect(json.pagesFetched).toBe(1);
+  });
+
+  it("C1.3: explicit limit 5000 paginates five pages and returns all 5000", async () => {
+    const { server, tools } = makeStubServer();
+    const pages = Array.from({ length: 5 }, (_, i) => ({
+      data: Array.from({ length: 1000 }, (_, j) => ({ id: i * 1000 + j })),
+      nextCursor: i < 4 ? `cursor-${i + 1}` : null,
+    }));
+    const { client } = makePaginatedClient(pages);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      limit: 5000,
+    });
+    const json = await getResponseJson(result);
+    expect((json.data as unknown[]).length).toBe(5000);
+    expect(json.pagesFetched).toBe(5);
+    expect(json.nextCursor).toBeNull();
+  });
+
+  it("C1.4: explicit limit 5000 stops at 5000 even if more available", async () => {
+    const { server, tools } = makeStubServer();
+    const pages = Array.from({ length: 6 }, (_, i) => ({
+      data: Array.from({ length: 1000 }, (_, j) => ({ id: i * 1000 + j })),
+      nextCursor: `cursor-${i + 1}`,
+    }));
+    const { client } = makePaginatedClient(pages);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      limit: 5000,
+    });
+    const json = await getResponseJson(result);
+    expect((json.data as unknown[]).length).toBe(5000);
+    expect(json.pagesFetched).toBe(5);
+    expect(json.nextCursor).toBe("cursor-5");
+  });
+
+  it("C1.5: safety cap returns isError after 10 pages", async () => {
+    const { server, tools } = makeStubServer();
+    // Use 500-row pages so limit 10000 is never reached, but 10 page fetches happen
+    const pages = Array.from({ length: 11 }, (_, i) => ({
+      data: Array.from({ length: 500 }, (_, j) => ({ id: i * 500 + j })),
+      nextCursor: `cursor-${i + 1}`,
+    }));
+    const { client } = makePaginatedClient(pages);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      limit: 10000,
+    });
+    const r = result as { content: Array<{ text: string }>; isError?: boolean };
+    expect(r.isError).toBe(true);
+    const json = JSON.parse(r.content[0].text);
+    expect(json.pagesFetched).toBe(10);
+    expect(json.nextCursor).toBeDefined();
+    expect(json._hint).toMatch(/cursor/i);
+  });
+
+  it("C1.6: cursor mode fetches exactly one page", async () => {
+    const { server, tools } = makeStubServer();
+    const rows = Array.from({ length: 100 }, (_, i) => ({ id: i }));
+    const { client } = makePaginatedClient([{ data: rows, nextCursor: "next-page" }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      cursor: "start-cursor",
+    });
+    const json = await getResponseJson(result);
+    expect((json.data as unknown[]).length).toBe(100);
+    expect(json.pagesFetched).toBe(1);
+    expect(json.nextCursor).toBe("next-page");
+  });
+
+  it("C1.7: cursor mode does not auto-paginate", async () => {
+    const { server, tools } = makeStubServer();
+    const { client, calls } = makePaginatedClient([
+      { data: [{ id: 1 }], nextCursor: "page2" },
+      { data: [{ id: 2 }], nextCursor: null },
+    ]);
+    registerSmartStatsTools(server as never, client);
+
+    await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      cursor: "start",
+    });
+    // Only one POST call should have been made (the stats query)
+    const postCalls = calls.filter(c => c.method === "POST");
+    expect(postCalls.length).toBe(1);
+  });
+
+  it("C1.8: cursor passed to upstream as query param", async () => {
+    const { server, tools } = makeStubServer();
+    const { client, calls } = makePaginatedClient([{ data: [{ id: 1 }], nextCursor: null }]);
+    registerSmartStatsTools(server as never, client);
+
+    await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      cursor: "my-cursor",
+    });
+    const postCall = calls.find(c => c.method === "POST")!;
+    expect(postCall.query).toHaveProperty("cursor", "my-cursor");
+  });
+
+  it("C1.9: null filter still works across paginated pages", async () => {
+    const { server, tools } = makeStubServer();
+    const page1 = [
+      { agentId: 1, ticketCount: 5 },
+      { agentId: 2, ticketCount: null },
+    ];
+    const page2 = [
+      { agentId: 3, ticketCount: null },
+      { agentId: 4, ticketCount: 10 },
+    ];
+    const { client } = makePaginatedClient([
+      { data: page1, nextCursor: "p2" },
+      { data: page2, nextCursor: null },
+    ]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      limit: 5000,
+    });
+    const json = await getResponseJson(result);
+    expect((json.data as unknown[]).length).toBe(4);
+    expect(json.nullMeasureRowCount).toBe(2);
+  });
+
+  it("C1.10: rawRowCount reflects pre-trim count", async () => {
+    const { server, tools } = makeStubServer();
+    // Use limit=500 with one page of 600 rows so the trim fires
+    const page1 = Array.from({ length: 600 }, (_, i) => ({ id: i }));
+    const { client } = makePaginatedClient([
+      { data: page1, nextCursor: null },
+    ]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      limit: 500,
+    });
+    const json = await getResponseJson(result);
+    // data is trimmed to 500 but rawRowCount reflects pre-trim 600
+    expect((json.data as unknown[]).length).toBe(500);
+    expect(json.rawRowCount).toBe(600);
+  });
+
+  it("C1.11: _hint never contains 'add dimensions' (regression guard)", async () => {
+    const { server, tools } = makeStubServer();
+    const fakeRows = Array.from({ length: 1000 }, (_, i) => ({ id: i, ticketCount: i }));
+    const { client } = makePaginatedClient([{ data: fakeRows, nextCursor: null }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+    });
+    const json = await getResponseJson(result);
+    expect(String(json._hint)).not.toMatch(/add dimensions/i);
+  });
+
+  it("C1.12: _hint mentions granularity: none when limit is reached", async () => {
+    const { server, tools } = makeStubServer();
+    const fakeRows = Array.from({ length: 1000 }, (_, i) => ({ id: i, ticketCount: i }));
+    const { client } = makePaginatedClient([{ data: fakeRows, nextCursor: "more" }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+    });
+    const json = await getResponseJson(result);
+    expect(String(json._hint)).toMatch(/granularity.*none|aggregate/i);
+  });
+
+  it("C1.13: tool input schema exposes limit and cursor", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerSmartStatsTools(server as never, client);
+
+    const shape = tools.get("gorgias_smart_stats")!.config.inputSchema!;
+    expect(shape.limit).toBeDefined();
+    expect(shape.cursor).toBeDefined();
+  });
+
+  it("C1.14: limit > 10000 rejected at schema layer", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerSmartStatsTools(server as never, client);
+
+    const shape = tools.get("gorgias_smart_stats")!.config.inputSchema!;
+    expect((shape.limit as z.ZodTypeAny).safeParse(10001).success).toBe(false);
+  });
+
+  it("C1.15: limit < 1 rejected at schema layer", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerSmartStatsTools(server as never, client);
+
+    const shape = tools.get("gorgias_smart_stats")!.config.inputSchema!;
+    expect((shape.limit as z.ZodTypeAny).safeParse(0).success).toBe(false);
+    expect((shape.limit as z.ZodTypeAny).safeParse(-1).success).toBe(false);
+  });
+
+  it("C1.16: legacy callers (no limit) get up to 1000 rows", async () => {
+    const { server, tools } = makeStubServer();
+    const fakeRows = Array.from({ length: 500 }, (_, i) => ({ id: i, ticketCount: i }));
+    const { client } = makePaginatedClient([{ data: fakeRows, nextCursor: null }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+    });
+    const json = await getResponseJson(result);
+    // 500 rows returned in full — no longer capped at 100
+    expect((json.data as unknown[]).length).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B1 — M2: smart_stats granularity "none" aggregate mode
+// ---------------------------------------------------------------------------
+
+describe("M2: smart_stats granularity none aggregate mode", () => {
+  function makePaginatedClient(pages: Array<{ data: unknown[]; nextCursor?: string | null }>) {
+    const calls: RecordedCall[] = [];
+    let pageIdx = 0;
+    const stub = {
+      async get(path: string, query?: Record<string, unknown>) {
+        calls.push({ method: "GET", path, query });
+        return { data: [] };
+      },
+      async post(path: string, body?: unknown, query?: Record<string, unknown>) {
+        calls.push({ method: "POST", path, body, query });
+        const page = pages[pageIdx++];
+        if (!page) return { data: [] };
+        return { data: page.data, meta: { next_cursor: page.nextCursor ?? null } };
+      },
+      async put() { return {}; },
+      async delete() { return {}; },
+      async request() { throw new Error("not implemented"); },
+      async search() { return []; },
+    } as unknown as GorgiasClient;
+    return { client: stub, calls };
+  }
+
+  it("M2.1: granularity none omits time_dimensions from POST body", async () => {
+    const { server, tools } = makeStubServer();
+    const { client, calls } = makePaginatedClient([{ data: [{ ticketCount: 42 }] }]);
+    registerSmartStatsTools(server as never, client);
+
+    await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      granularity: "none",
+    });
+    const postCall = calls.find(c => c.method === "POST")!;
+    const body = postCall.body as { query: Record<string, unknown> };
+    expect(body.query).not.toHaveProperty("time_dimensions");
+  });
+
+  it("M2.2: granularity day still includes time_dimensions (regression)", async () => {
+    const { server, tools } = makeStubServer();
+    const { client, calls } = makePaginatedClient([{ data: [{ ticketCount: 42 }] }]);
+    registerSmartStatsTools(server as never, client);
+
+    await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      granularity: "day",
+    });
+    const postCall = calls.find(c => c.method === "POST")!;
+    const body = postCall.body as { query: Record<string, unknown> };
+    expect(body.query).toHaveProperty("time_dimensions");
+    expect((body.query.time_dimensions as unknown[])[0]).toEqual({
+      dimension: "createdDatetime", granularity: "day",
+    });
+  });
+
+  it("M2.3: response echoes granularity none", async () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makePaginatedClient([{ data: [{ ticketCount: 42 }] }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      granularity: "none",
+    });
+    const json = await getResponseJson(result);
+    expect(json.granularity).toBe("none");
+  });
+
+  it("M2.4: rejects unknown granularity", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerSmartStatsTools(server as never, client);
+
+    const shape = tools.get("gorgias_smart_stats")!.config.inputSchema!;
+    expect((shape.granularity as z.ZodTypeAny).safeParse("yearly").success).toBe(false);
+  });
+
+  it("M2.5: granularity none with zero dimensions returns single aggregated row", async () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makePaginatedClient([{ data: [{ ticketCount: 999 }] }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2026-01-01", end_date: "2026-01-31",
+      granularity: "none", dimensions: [],
+    });
+    const json = await getResponseJson(result);
+    expect((json.data as unknown[]).length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B1 — M3: smart_stats 366-day client-side validation
+// ---------------------------------------------------------------------------
+
+import { MAX_PERIOD_DAYS, periodLengthDays } from "../reporting-knowledge.js";
+
+describe("M3: smart_stats 366-day client-side validation", () => {
+  function makePaginatedClient(pages: Array<{ data: unknown[]; nextCursor?: string | null }>) {
+    const calls: RecordedCall[] = [];
+    let pageIdx = 0;
+    const stub = {
+      async get(path: string, query?: Record<string, unknown>) {
+        calls.push({ method: "GET", path, query });
+        return { data: [] };
+      },
+      async post(path: string, body?: unknown, query?: Record<string, unknown>) {
+        calls.push({ method: "POST", path, body, query });
+        const page = pages[pageIdx++];
+        if (!page) return { data: [] };
+        return { data: page.data, meta: { next_cursor: page.nextCursor ?? null } };
+      },
+      async put() { return {}; },
+      async delete() { return {}; },
+      async request() { throw new Error("not implemented"); },
+      async search() { return []; },
+    } as unknown as GorgiasClient;
+    return { client: stub, calls };
+  }
+
+  it("M3.1: periodLengthDays inclusive boundary — same date = 1, one day gap = 2", () => {
+    expect(periodLengthDays("2026-01-01", "2026-01-01")).toBe(1);
+    expect(periodLengthDays("2026-01-01", "2026-01-02")).toBe(2);
+  });
+
+  it("M3.2: periodLengthDays leap-year handling — 2024 full year = 366", () => {
+    expect(periodLengthDays("2024-01-01", "2024-12-31")).toBe(366);
+  });
+
+  it("M3.3: accepts 366 day span", async () => {
+    const { server, tools } = makeStubServer();
+    const { client, calls } = makePaginatedClient([{ data: [{ ticketCount: 1 }] }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2024-01-01", end_date: "2024-12-31",
+    });
+    const r = result as { isError?: boolean };
+    expect(r.isError).toBeUndefined();
+    // Verify the API call was actually made
+    const postCalls = calls.filter(c => c.method === "POST");
+    expect(postCalls.length).toBeGreaterThan(0);
+  });
+
+  it("M3.4: rejects 367 day span with zero API calls", async () => {
+    const { server, tools } = makeStubServer();
+    const { client, calls } = makePaginatedClient([{ data: [] }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2024-01-01", end_date: "2025-01-01",
+    });
+    const r = result as { content: Array<{ text: string }>; isError?: boolean };
+    expect(r.isError).toBe(true);
+    const json = JSON.parse(r.content[0].text);
+    expect(json.requestedDays).toBe(367);
+    expect(json.maxDays).toBe(366);
+    // No API calls should have been made
+    const postCalls = calls.filter(c => c.method === "POST");
+    expect(postCalls.length).toBe(0);
+  });
+
+  it("M3.5: error payload hint mentions split", async () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makePaginatedClient([{ data: [] }]);
+    registerSmartStatsTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_stats")!.handler({
+      scope: "tickets-created", start_date: "2024-01-01", end_date: "2025-06-01",
+    });
+    const r = result as { content: Array<{ text: string }> };
+    const json = JSON.parse(r.content[0].text);
+    expect(json._hint).toMatch(/split/i);
+  });
+
+  it("M3.6: MAX_PERIOD_DAYS is exported and equals 366", () => {
+    expect(MAX_PERIOD_DAYS).toBe(366);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B2 — C3: smart_get_ticket message auto-pagination
+// ---------------------------------------------------------------------------
+
+describe("C3: smart_get_ticket message auto-pagination", () => {
+  function makeMessage(id: number) {
+    return {
+      id,
+      body_html: `<p>Message ${id}</p>`,
+      body_text: `Message ${id}`,
+      sender: { type: "agent", name: `Agent ${id}` },
+      channel: "email",
+      via: "helpdesk",
+      created_datetime: `2026-01-${String(id).padStart(2, "0")}T00:00:00Z`,
+      source: { type: "email" },
+    };
+  }
+
+  function makeTicketDetailClient(
+    ticket: unknown,
+    messagePages: Array<{ data: unknown[]; nextCursor?: string | null }>,
+  ) {
+    const calls: RecordedCall[] = [];
+    let messagePageIdx = 0;
+    const stub = {
+      async get(path: string, query?: Record<string, unknown>) {
+        calls.push({ method: "GET", path, query });
+        if (path.endsWith("/messages")) {
+          const page = messagePages[messagePageIdx++];
+          if (!page) return { data: [] };
+          return { data: page.data, meta: { next_cursor: page.nextCursor ?? null } };
+        }
+        return ticket;
+      },
+      async post() { return {}; },
+      async put() { return {}; },
+      async delete() { return {}; },
+      async request() { throw new Error("not implemented"); },
+      async search() { return []; },
+    } as unknown as GorgiasClient;
+    return { client: stub, calls };
+  }
+
+  const baseTicket = {
+    id: 1, subject: "Test", status: "open", priority: "normal",
+    customer: { id: 1, name: "Customer" }, channel: "email",
+    created_datetime: "2026-01-01T00:00:00Z",
+    updated_datetime: "2026-01-01T00:00:00Z",
+    opened_datetime: "2026-01-01T00:00:00Z",
+    assignee_user: null, assignee_team: null,
+    tags: [], messages_count: 0,
+  };
+
+  it("C3.8: ticket with 31 messages returns all 31", async () => {
+    const { server, tools } = makeStubServer();
+    const msgs = Array.from({ length: 31 }, (_, i) => makeMessage(i + 1));
+    const { client } = makeTicketDetailClient(baseTicket, [
+      { data: msgs.slice(0, 30), nextCursor: "p2" },
+      { data: msgs.slice(30), nextCursor: null },
+    ]);
+    registerSmartTicketDetailTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_get_ticket")!.handler({ id: 1 });
+    const json = await getResponseJson(result);
+    expect((json.messages as unknown[]).length).toBe(31);
+    expect(json.truncated).toBeUndefined();
+  });
+
+  it("C3.9: ticket with 305 messages returns all 305 (default cap 1000)", async () => {
+    const { server, tools } = makeStubServer();
+    const msgs = Array.from({ length: 305 }, (_, i) => makeMessage(i + 1));
+    const pages = [];
+    for (let i = 0; i < msgs.length; i += 100) {
+      const slice = msgs.slice(i, i + 100);
+      pages.push({
+        data: slice,
+        nextCursor: i + 100 < msgs.length ? `p${Math.floor(i / 100) + 2}` : null,
+      });
+    }
+    const { client } = makeTicketDetailClient(baseTicket, pages);
+    registerSmartTicketDetailTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_get_ticket")!.handler({ id: 1 });
+    const json = await getResponseJson(result);
+    expect((json.messages as unknown[]).length).toBe(305);
+    expect(json.truncated).toBeUndefined();
+  });
+
+  it("C3.10: max_messages=50 returns 50, truncated=true", async () => {
+    const { server, tools } = makeStubServer();
+    const msgs = Array.from({ length: 305 }, (_, i) => makeMessage(i + 1));
+    const { client } = makeTicketDetailClient(baseTicket, [
+      { data: msgs.slice(0, 100), nextCursor: "p2" },
+    ]);
+    registerSmartTicketDetailTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_get_ticket")!.handler({ id: 1, max_messages: 50 });
+    const json = await getResponseJson(result);
+    expect((json.messages as unknown[]).length).toBe(50);
+    expect(json.truncated).toBe(true);
+    expect(json.truncatedReason).toMatch(/max_messages cap of 50/);
+    expect(json.pagesFetched).toBe(1);
+  });
+
+  it("C3.11: max_messages=250 returns 250, truncated=true, pagesFetched=3", async () => {
+    const { server, tools } = makeStubServer();
+    const msgs = Array.from({ length: 305 }, (_, i) => makeMessage(i + 1));
+    const pages = [];
+    for (let i = 0; i < msgs.length; i += 100) {
+      const slice = msgs.slice(i, i + 100);
+      pages.push({
+        data: slice,
+        nextCursor: i + 100 < msgs.length ? `p${Math.floor(i / 100) + 2}` : null,
+      });
+    }
+    const { client } = makeTicketDetailClient(baseTicket, pages);
+    registerSmartTicketDetailTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_get_ticket")!.handler({ id: 1, max_messages: 250 });
+    const json = await getResponseJson(result);
+    expect((json.messages as unknown[]).length).toBe(250);
+    expect(json.truncated).toBe(true);
+    expect(json.pagesFetched).toBe(3);
+  });
+
+  it("C3.12: truncated _hint leads with PARTIAL CONVERSATION", async () => {
+    const { server, tools } = makeStubServer();
+    const msgs = Array.from({ length: 100 }, (_, i) => makeMessage(i + 1));
+    const { client } = makeTicketDetailClient(baseTicket, [
+      { data: msgs, nextCursor: "more" },
+    ]);
+    registerSmartTicketDetailTools(server as never, client);
+
+    const result = await tools.get("gorgias_smart_get_ticket")!.handler({ id: 1, max_messages: 50 });
+    const json = await getResponseJson(result);
+    expect(String(json._hint)).toMatch(/PARTIAL CONVERSATION/);
+  });
+
+  it("C3.13: max_messages=6000 rejected by Zod (hard cap 5000)", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerSmartTicketDetailTools(server as never, client);
+
+    const shape = tools.get("gorgias_smart_get_ticket")!.config.inputSchema!;
+    expect((shape.max_messages as z.ZodTypeAny).safeParse(6000).success).toBe(false);
+  });
+
+  it("C3.14: max_messages=0 rejected by Zod", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerSmartTicketDetailTools(server as never, client);
+
+    const shape = tools.get("gorgias_smart_get_ticket")!.config.inputSchema!;
+    expect((shape.max_messages as z.ZodTypeAny).safeParse(0).success).toBe(false);
+  });
+
+  it("C3.15: wire format: limit=100 on every messages page", async () => {
+    const { server, tools } = makeStubServer();
+    const msgs = Array.from({ length: 31 }, (_, i) => makeMessage(i + 1));
+    const { client, calls } = makeTicketDetailClient(baseTicket, [
+      { data: msgs.slice(0, 30), nextCursor: "p2" },
+      { data: msgs.slice(30), nextCursor: null },
+    ]);
+    registerSmartTicketDetailTools(server as never, client);
+
+    await tools.get("gorgias_smart_get_ticket")!.handler({ id: 1 });
+    const msgCalls = calls.filter(c => c.path.includes("/messages"));
+    expect(msgCalls.length).toBe(2);
+    expect(msgCalls[0].query).toEqual({ limit: 100 });
+    expect(msgCalls[1].query).toEqual({ limit: 100, cursor: "p2" });
+  });
+
+  it("C3.16: default max_messages is 1000", () => {
+    const { server, tools } = makeStubServer();
+    const { client } = makeStubClient();
+    registerSmartTicketDetailTools(server as never, client);
+
+    const shape = tools.get("gorgias_smart_get_ticket")!.config.inputSchema!;
+    // max_messages is optional, meaning omission uses default 1000
+    expect(shape.max_messages).toBeDefined();
+    expect((shape.max_messages as z.ZodTypeAny).safeParse(undefined).success).toBe(true);
   });
 });
