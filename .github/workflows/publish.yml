@@ -1,0 +1,72 @@
+name: Publish Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test
+
+  publish-npm:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm run build
+      - name: Publish to npm
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "gorgias-mcp-server@$VERSION" version 2>/dev/null; then
+            echo "v$VERSION already on npm — skipping"
+          else
+            npm publish --access public --ignore-scripts
+          fi
+
+  publish-gpr:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@benpalmer1'
+      - run: npm ci
+      - run: npm run build
+      - name: Publish to GitHub Packages
+        run: |
+          npm pkg set name='@benpalmer1/gorgias-mcp-server'
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@benpalmer1/gorgias-mcp-server@$VERSION" version 2>/dev/null; then
+            echo "v$VERSION already on GitHub Packages — skipping"
+          else
+            npm publish --ignore-scripts
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
